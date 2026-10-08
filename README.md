@@ -87,8 +87,8 @@ saved with the profile. Back up your memory card first if the profile matters to
 ## Known issues
 
 - The guns mounted on vehicles aim up and down slowly with the mouse.
-- In The Khallos Express, the health pack in the safe only appears if Harry Tipper opens it; doing something
-  else first means he never does, until the mission is restarted. It is not a check.
+- In The Khallos Express, the health pack in the safe (Container Health 1) only appears if you let Harry Tipper
+  open it. Doing something else first means it never spawns until the mission is restarted.
 
 ## For developers
 
