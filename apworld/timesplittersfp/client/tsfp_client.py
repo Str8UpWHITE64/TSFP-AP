@@ -80,7 +80,7 @@ class TSFPCommandProcessor(ClientCommandProcessor):
 
     def _cmd_launch(self):
         """Start Dolphin on the patched image (the client does this at startup too)."""
-        launch_game(self.ctx)
+        asyncio.create_task(launch(self.ctx), name="Launch")
 
     def _cmd_weapons(self):
         """Show which weapons are granted and what each shuffled weapon behaves as."""
@@ -162,14 +162,71 @@ class TSFPContext(CommonContext):
         self.trap = None                # (index, bit, ends at, cheat state before)
 
     def run_gui(self):
-        from kvui import GameManager
+        import logging
+        import threading
+        # kvui first: it sets kivy up before kivy loads (DPI awareness off; kivy's own makes the window
+        # re-lay itself out endlessly), and that can only happen before the first kivy import
+        from kvui import GameManager, LogtoUI
+        from kivy.clock import Clock
+        from kivy.metrics import dp
+        from kivymd.uix.boxlayout import MDBoxLayout
+        from kivymd.uix.label import MDLabel
+        from kivymd.uix.progressindicator import MDLinearProgressIndicator
+
+        def on_main_thread(fn):
+            """The window's log is not thread-safe; lines from the disc preparation thread are
+            handed to the main thread."""
+            def call(*args):
+                if threading.current_thread() is threading.main_thread():
+                    fn(*args)
+                else:
+                    Clock.schedule_once(lambda _dt: fn(*args))
+            return call
 
         class TSFPManager(GameManager):
             logging_pairs = [("Client", "Archipelago")]
             base_title = "Archipelago TimeSplitters: Future Perfect Client"
 
+            def build(self):
+                layout = super().build()
+                # a status line and bar under the server bar while a launch prepares the disc
+                self.prep_box = MDBoxLayout(orientation="vertical", size_hint_y=None, height=0, opacity=0,
+                                            padding=(dp(8), 0))
+                self.prep_label = MDLabel(text="", size_hint_y=None, height=dp(24))
+                self.prep_bar = MDLinearProgressIndicator(size_hint_y=None, height=dp(4), max=1, value=0)
+                self.prep_box.add_widget(self.prep_label)
+                self.prep_box.add_widget(self.prep_bar)
+                # kivy lists children last-first: this index puts it just below Archipelago's own bar
+                self.grid.add_widget(self.prep_box, index=self.grid.children.index(self.progressbar))
+                for name in [None] + list(logging.Logger.manager.loggerDict):
+                    for handler in logging.getLogger(name).handlers:
+                        if isinstance(handler, LogtoUI):
+                            handler.on_log = on_main_thread(handler.on_log)
+                return layout
+
+            def show_prep(self, text, done, total):
+                self.prep_box.height, self.prep_box.opacity = dp(32), 1
+                self.prep_label.text = text
+                self.prep_bar.max = max(1, total or 0)
+                self.prep_bar.value = done or 0
+
+            def hide_prep(self):
+                self.prep_box.height, self.prep_box.opacity = 0, 0
+
         self.ui = TSFPManager(self)
         self.ui_task = asyncio.create_task(self.ui.async_run(), name="UI")
+
+    def show_prep(self, text, done=None, total=None):
+        """Launch progress in the window (any thread), and in the log."""
+        note(text)
+        if self.ui is not None and hasattr(self.ui, "prep_box"):
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda _dt: self.ui.show_prep(text, done, total))
+
+    def hide_prep(self):
+        if self.ui is not None and hasattr(self.ui, "prep_box"):
+            from kivy.clock import Clock
+            Clock.schedule_once(lambda _dt: self.ui.hide_prep())
 
     async def server_auth(self, password_requested: bool = False):
         if password_requested and not self.password:
@@ -843,7 +900,25 @@ def _ask_path(title, filetypes):
         return None
 
 
-def launch_game(ctx, dolphin=None, game=None):
+async def launch(ctx, dolphin=None, game=None):
+    """Ask for anything missing, prepare the disc copy off the main thread (the window stays up and
+    shows the progress), then start Dolphin on it."""
+    chosen = choose_launch(dolphin, game)
+    if chosen is None:
+        return
+    settings, dolphin, game = chosen
+    try:
+        patched = await asyncio.to_thread(prepare_disc, ctx, settings, dolphin, game)
+    finally:
+        ctx.hide_prep()
+    if patched is not None and not ctx.exit_event.is_set():
+        ctx.dolphin_process = start_game(ctx, settings, dolphin, patched)
+        ctx.dolphin_exit_reported = False
+
+
+def choose_launch(dolphin=None, game=None):
+    """Dolphin, the disc and the music folder, asked for on the main thread (the file dialogs need it)
+    before any slow work. Returns (settings, dolphin, game), or None if something was not chosen."""
     settings = _settings()
     dolphin = dolphin or (getattr(settings, "dolphin_path", None) if settings else None)
     game = game or (getattr(settings, "game_path", None) if settings else None)
@@ -874,14 +949,54 @@ def launch_game(ctx, dolphin=None, game=None):
             get_settings().save()
         except Exception as exc:
             note("could not save settings: %r", exc)
+    ask_music_folder(settings)
+    return settings, str(dolphin), str(game)
+
+
+def music_mode(settings):
+    mode = str(getattr(settings, "music_shuffle", "off") or "off") if settings is not None else "off"
+    if mode not in music.MODES:
+        logger.warning("Unknown music_shuffle %r in host.yaml; using off. Choices: %s", mode, ", ".join(music.MODES))
+        mode = "off"
+    return mode
+
+
+def ask_music_folder(settings):
+    """Your songs' folder, asked for the first time a mode needs one, and remembered as music_folder."""
+    if music_mode(settings) not in ("game_and_custom", "custom_only"):
+        return
+    if os.path.exists(str(getattr(settings, "music_folder", "") or "")):
+        return
+    try:
+        folder = Utils.open_directory("Select the folder with your songs for the music shuffle") or ""
+    except Exception as exc:
+        note("no folder dialog: %r", exc)
+        folder = ""
+    if folder:
+        try:
+            settings.music_folder = folder
+            from settings import get_settings
+            get_settings().save()
+        except Exception as exc:
+            note("could not save settings: %r", exc)
+
+
+def prepare_disc(ctx, settings, dolphin, game):
+    """The slow part of a launch, run off the main thread so the window stays up: patch the copy, then
+    write this launch's music and voices into it. Returns the image to boot, or None."""
     voices_wanted = bool(str(getattr(settings, "voice_disc", "") or "")) if settings is not None else False
-    patched = ensure_patched(str(game), as_iso=voices_wanted)
+    ctx.show_prep("Patching your disc copy...")
+    patched = ensure_patched(game, as_iso=voices_wanted)
     if patched is None:
         return None
-    apply_disc_content(settings, str(patched), dolphin)
-    logger.info("Launching %s", os.path.basename(str(patched)))
+    apply_disc_content(ctx, settings, str(patched), dolphin)
+    return str(patched)
+
+
+def start_game(ctx, settings, dolphin, patched):
+    logger.info("Launching %s", os.path.basename(patched))
     try:
-        proc = subprocess.Popen([str(dolphin), "--exec=%s" % patched, "--batch"])
+        proc = subprocess.Popen([dolphin, "--exec=%s" % patched, "--batch"])
     except Exception as exc:
         logger.error("Could not start Dolphin: %s", exc)
         return None
@@ -890,27 +1005,11 @@ def launch_game(ctx, dolphin=None, game=None):
     return proc
 
 
-def apply_disc_content(settings, image, dolphin):
+def apply_disc_content(ctx, settings, image, dolphin):
     """This launch's music (host.yaml music_shuffle) and voices (voice_disc), written into the patched
     copy before boot."""
-    mode = str(getattr(settings, "music_shuffle", "off") or "off") if settings is not None else "off"
-    if mode not in music.MODES:
-        logger.warning("Unknown music_shuffle %r in host.yaml; using off. Choices: %s", mode, ", ".join(music.MODES))
-        mode = "off"
+    mode = music_mode(settings)
     folder = str(getattr(settings, "music_folder", "") or "")
-    if mode in ("game_and_custom", "custom_only") and not os.path.exists(folder):
-        try:
-            folder = Utils.open_directory("Select the folder with your songs for the music shuffle") or ""
-        except Exception as exc:
-            note("no folder dialog: %r", exc)
-            folder = ""
-        if folder:
-            try:
-                settings.music_folder = folder
-                from settings import get_settings
-                get_settings().save()
-            except Exception as exc:
-                note("could not save settings: %r", exc)
     if mode in ("game_and_custom", "custom_only"):
         logger.info("Preparing your music (new songs are converted once; this can take a moment)...")
     cache = Utils.cache_path("timesplittersfp", "music")
@@ -920,17 +1019,29 @@ def apply_disc_content(settings, image, dolphin):
         if not os.path.isfile(disc):
             logger.warning("voice_disc %r was not found; the English voices are used.", disc)
         else:
+            ctx.show_prep("Preparing the voices from %s..." % os.path.basename(disc))
             try:
                 voices = voice_pack.prepare(disc, dolphin, cache, patch_iso.Image, log=logger.info)
                 if voices is None:
                     logger.info("%s carries the English voices; nothing to change.", os.path.basename(disc))
             except Exception as exc:
                 logger.warning("Voice pack skipped: %s", exc)
+
+    def progress(done, total, song):
+        if done < total:
+            ctx.show_prep("Converting your songs: %d of %d done%s" % (done, total, " (%s)" % song if done else ""),
+                          done, total)
+        else:
+            ctx.show_prep("Writing the music into your disc copy...", total, total)
+
+    if mode != "off" or voices:
+        ctx.show_prep("Writing the music into your disc copy...")
     try:
         music.apply(image, cache, mode=mode, folder=folder,
                     seed=int(getattr(settings, "music_seed", 0) or 0),
                     ffmpeg_path=str(getattr(settings, "ffmpeg_path", "") or ""),
-                    log=note, warn=logger.warning, image_factory=patch_iso.Image, voice=voices)
+                    log=note, warn=logger.warning, image_factory=patch_iso.Image, voice=voices,
+                    progress=progress)
         if voices:
             logger.info("Voices: %s.", voices.language.capitalize())
     except Exception as exc:
@@ -976,9 +1087,10 @@ def main(*launch_args: str):
         if gui_enabled:
             ctx.run_gui()
         ctx.run_cli()
-        if not args.no_launch:
-            ctx.dolphin_process = launch_game(ctx, args.dolphin, args.game)
         loop = asyncio.create_task(game_loop(ctx), name="GameLoop")
+        if not args.no_launch:
+            await asyncio.sleep(0.5)            # let the window draw before the dialogs and the slow work
+            await launch(ctx, args.dolphin, args.game)
         await ctx.exit_event.wait()
         loop.cancel()
         if getattr(ctx, "mouse_process", None) is not None and ctx.mouse_process.is_alive():

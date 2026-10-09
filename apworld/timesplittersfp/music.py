@@ -21,7 +21,9 @@ import random
 import shutil
 import struct
 import subprocess
+import threading
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 
 BGM = (
     'music/cutscene_suite_action32.ogg', 'music/cutscene_suite_badguys_sneak32.ogg',
@@ -58,6 +60,7 @@ MODES = ("off", "game_music", "game_and_custom", "custom_only")
 AUDIO_EXTS = {".mp3", ".ogg", ".oga", ".flac", ".wav", ".m4a", ".aac", ".opus", ".wma", ".aif", ".aiff"}
 TARGET_LUFS, TRUE_PEAK, LRA = -10.0, -1.0, 11.0     # the game's own music sits around -11..-9 LUFS
 CONVERT_VERSION = 1                                  # bump when the conversion changes: re-converts every song
+CONVERT_WORKERS = max(1, min(8, (os.cpu_count() or 2) // 2))   # songs converted at once; half the cores
 ALIGN = 32
 DISC_SIZE = 1459978240
 
@@ -349,8 +352,10 @@ def _plan_voice(image, original, entries, voice, donors_extra):
 
 
 def apply(image_path, cache_root, mode="off", folder="", seed=0, ffmpeg_path="", log=print, warn=print,
-          image_factory=None, voice=None):
-    """Bring the disc copy at `image_path` to this launch's music and voices. Returns a short summary."""
+          image_factory=None, voice=None, progress=None):
+    """Bring the disc copy at `image_path` to this launch's music and voices. Returns a short summary.
+    progress(done, total, song) is called as each of your songs is ready (song = the one just done), as
+    converting them is the slow part."""
     if image_factory is None:
         from .patcher import Image as image_factory
     mode = mode if mode in MODES else "off"
@@ -441,9 +446,25 @@ def apply(image_path, cache_root, mode="off", folder="", seed=0, ffmpeg_path="",
                          "32000 Hz) are used. Install ffmpeg (Windows: winget install Gyan.FFmpeg; macOS: brew "
                          "install ffmpeg) and restart the Launcher, or set ffmpeg_path under timesplittersfp_options "
                          "in host.yaml.")
-                bad = 0
-                for group, label, src in songs:
+                # one ffmpeg per song, several at once: each mostly keeps a single core busy
+                finished = [0]
+                lock = threading.Lock()
+
+                def one(song):
+                    group, label, src = song
                     out = convert(ffmpeg, src, conv_dir) if ffmpeg else (src if vorbis_ok(src) else None)
+                    if progress:
+                        with lock:
+                            finished[0] += 1
+                            progress(finished[0], len(songs), label)
+                    return out
+
+                if progress and songs:
+                    progress(0, len(songs), songs[0][1])
+                with ThreadPoolExecutor(max_workers=CONVERT_WORKERS) as pool:
+                    outs = list(pool.map(one, songs))
+                bad = 0
+                for (group, label, src), out in zip(songs, outs):
                     if out:
                         custom[group].append(Song(label, group, path=out))
                     else:
