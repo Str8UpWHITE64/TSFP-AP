@@ -32,7 +32,9 @@ from NetUtils import ClientStatus
 
 from .. import data
 from .. import memmap as mm
+from .. import music
 from .. import patcher as patch_iso
+from .. import voice as voice_pack
 from . import gamestate
 
 GAME = "TimeSplitters Future Perfect"
@@ -718,8 +720,9 @@ def _settings():
 ALL_PATCHES = patch_iso.PATCHES + [p for p in patch_iso.MOUSE_PATCHES if p not in patch_iso.PATCHES]
 
 
-def ensure_patched(image_path):
-    """Return a fully patched image to run, patching a copy if need be."""
+def ensure_patched(image_path, as_iso=False):
+    """Return a fully patched image to run, patching a copy if need be. as_iso: the copy must be a
+    plain ISO (voice packs need its free space), whatever the original's format."""
 
     def missing_patches(path):
         image = patch_iso.Image(path)
@@ -735,13 +738,19 @@ def ensure_patched(image_path):
     except SystemExit as exc:
         logger.error("%s", exc)
         return image_path
-    if not missing:
+    with open(image_path, "rb") as f:
+        compressed = f.read(4) != b"G3FE"
+    need_iso = as_iso and compressed
+    if not missing and not need_iso:
         note("Image is fully patched.")
         return image_path
     stem, ext = os.path.splitext(image_path)
     # the image chosen may itself be a copy this client wrote earlier ("... (AP)"): update it
     # rather than writing "(AP) (AP)" beside it
-    patched_path = image_path if stem.endswith(" (AP)") else stem + " (AP)" + ext
+    if need_iso:
+        patched_path = (stem[:-len(" (AP)")] if stem.endswith(" (AP)") else stem) + " (AP).iso"
+    else:
+        patched_path = image_path if stem.endswith(" (AP)") else stem + " (AP)" + ext
     if os.path.exists(patched_path):
         try:
             if not missing_patches(patched_path):
@@ -755,9 +764,10 @@ def ensure_patched(image_path):
                 logger.error("Patching failed: %s -- if Dolphin is still running on it, close it and retry.", exc)
                 return None
             logger.info("Could not update it (%s); writing a fresh copy.", exc)
-    logger.info("Writing a patched copy to %s (%d patch(es))", os.path.basename(patched_path), len(ALL_PATCHES))
+    logger.info("Writing a patched copy to %s (%d patch(es))%s", os.path.basename(patched_path), len(ALL_PATCHES),
+                " as a plain ISO, for the voice pack" if need_iso else "")
     try:
-        patch_iso.apply(image_path, patched_path, patches=ALL_PATCHES)
+        patch_iso.apply(image_path, patched_path, patches=ALL_PATCHES, as_iso=need_iso)
     except (SystemExit, OSError) as exc:
         logger.error("Patching failed: %s -- if Dolphin is still running on the old copy, close it and retry.", exc)
         return None
@@ -804,9 +814,11 @@ def launch_game(ctx, dolphin=None, game=None):
             get_settings().save()
         except Exception as exc:
             note("could not save settings: %r", exc)
-    patched = ensure_patched(str(game))
+    voices_wanted = bool(str(getattr(settings, "voice_disc", "") or "")) if settings is not None else False
+    patched = ensure_patched(str(game), as_iso=voices_wanted)
     if patched is None:
         return None
+    apply_disc_content(settings, str(patched), dolphin)
     logger.info("Launching %s", os.path.basename(str(patched)))
     try:
         proc = subprocess.Popen([str(dolphin), "--exec=%s" % patched, "--batch"])
@@ -816,6 +828,53 @@ def launch_game(ctx, dolphin=None, game=None):
     if settings is None or bool(getattr(settings, "mouse_look", True)):
         ctx.mouse_process = start_mouse()
     return proc
+
+
+def apply_disc_content(settings, image, dolphin):
+    """This launch's music (host.yaml music_shuffle) and voices (voice_disc), written into the patched
+    copy before boot."""
+    mode = str(getattr(settings, "music_shuffle", "off") or "off") if settings is not None else "off"
+    if mode not in music.MODES:
+        logger.warning("Unknown music_shuffle %r in host.yaml; using off. Choices: %s", mode, ", ".join(music.MODES))
+        mode = "off"
+    folder = str(getattr(settings, "music_folder", "") or "")
+    if mode in ("game_and_custom", "custom_only") and not os.path.exists(folder):
+        try:
+            folder = Utils.open_directory("Select the folder with your songs for the music shuffle") or ""
+        except Exception as exc:
+            note("no folder dialog: %r", exc)
+            folder = ""
+        if folder:
+            try:
+                settings.music_folder = folder
+                from settings import get_settings
+                get_settings().save()
+            except Exception as exc:
+                note("could not save settings: %r", exc)
+    if mode in ("game_and_custom", "custom_only"):
+        logger.info("Preparing your music (new songs are converted once; this can take a moment)...")
+    cache = Utils.cache_path("timesplittersfp", "music")
+    voices = None
+    disc = str(getattr(settings, "voice_disc", "") or "") if settings is not None else ""
+    if disc:
+        if not os.path.isfile(disc):
+            logger.warning("voice_disc %r was not found; the English voices are used.", disc)
+        else:
+            try:
+                voices = voice_pack.prepare(disc, dolphin, cache, patch_iso.Image, log=logger.info)
+                if voices is None:
+                    logger.info("%s carries the English voices; nothing to change.", os.path.basename(disc))
+            except Exception as exc:
+                logger.warning("Voice pack skipped: %s", exc)
+    try:
+        music.apply(image, cache, mode=mode, folder=folder,
+                    seed=int(getattr(settings, "music_seed", 0) or 0),
+                    ffmpeg_path=str(getattr(settings, "ffmpeg_path", "") or ""),
+                    log=note, warn=logger.warning, image_factory=patch_iso.Image, voice=voices)
+        if voices:
+            logger.info("Voices: %s.", voices.language.capitalize())
+    except Exception as exc:
+        logger.warning("Music and voices skipped: %s", exc)
 
 
 def start_mouse():

@@ -12,6 +12,8 @@ Features:
 - **Weapon Gating and Weapon Shuffle**: weapons become items, and story levels can hand out a different gun
   in each weapon's place.
 - **Mouse look** built in: no extra program to install or run.
+- **Music shuffle**, with your own songs if you like: any format, converted and volume-matched for you.
+- **Voices in French, German, Italian or Spanish** from your own European copy of the game.
 - **One Launcher entry**: the client patches your disc, starts Dolphin and connects, all on its own.
 
 ## What you need
@@ -57,6 +59,49 @@ too. **F8** turns capture on and off, **F6** / **F7** lower and raise the sensit
 `mouse_look: false` under `timesplittersfp_options` in `host.yaml`. The game's own Inverse Look setting is
 followed.
 
+### Music shuffle and your own songs
+
+Set `music_shuffle` under `timesplittersfp_options` in `host.yaml` (open it from the Launcher). The music is
+prepared each time the client launches the game:
+
+| `music_shuffle` | Music |
+| --- | --- |
+| `off` | The normal soundtrack (default) |
+| `game_music` | The level and menu music shuffled |
+| `game_and_custom` | Your songs join the game's, and every level and menu track is picked from both |
+| `custom_only` | As many of your songs as fit replace game tracks, shuffled in with the rest |
+
+**Your own songs need ffmpeg**, a free audio tool the client uses to convert them. Install it once:
+
+| System | How |
+| --- | --- |
+| Windows 10 / 11 | In a terminal: `winget install Gyan.FFmpeg` (winget comes with Windows 11 and current Windows 10) |
+| macOS | With [Homebrew](https://brew.sh) (not installed by default): `brew install ffmpeg` |
+| Linux | Your package manager, e.g. `sudo apt install ffmpeg` |
+| Any | Download it from [ffmpeg.org](https://ffmpeg.org/download.html) and set `ffmpeg_path` in `host.yaml` to the `ffmpeg` program |
+
+Restart the Archipelago Launcher after installing so it finds ffmpeg. Without it, only songs that are already
+Ogg Vorbis, stereo, 32000 Hz are used, and the client says so.
+
+Then put your songs in a folder (or a `.zip`), in any common format: MP3, FLAC, WAV, OGG, M4A and so on. The client
+asks for the folder the first time and remembers it as `music_folder`; each song is converted and matched to the
+game's volume once. Songs in an `events` subfolder are used for the two short stingers (mission complete, challenge
+won); everything else is level and menu music.
+
+`music_seed: 0` gives a new shuffle every launch; any other number keeps the same one. Cutscene music is never
+changed, since it carries the dialogue. Your songs take the place of game tracks on the patched copy only, and
+the next launch puts those tracks back before it changes anything.
+
+### Voices in another language
+
+If you own a European release of the game in another language (French, German, Italian or Spanish), set
+`voice_disc` under `timesplittersfp_options` in `host.yaml` to that disc image. The client takes its voices and
+puts them in the randomizer: the dialogue in levels and in cutscenes. Menus and subtitles stay in English.
+
+Any format Dolphin reads works; RVZ uses the DolphinTool that comes with Dolphin. The voices are prepared once.
+With a voice disc set, the patched copy is written as a plain ISO (`<name> (AP).iso`), because it needs the
+free space an ISO has. Clear `voice_disc` to go back to the English voices.
+
 ## Options
 
 The template yaml from the Launcher lists every option with its choices.
@@ -87,6 +132,8 @@ saved with the profile. Back up your memory card first if the profile matters to
 ## Known issues
 
 - The guns mounted on vehicles aim up and down slowly with the mouse.
+- With Weapon Shuffle, a guard leaning out of cover with a shotgun-type gun (T12G, Shotgun, Dispersion Gun)
+  plays the rapid-fire animation, but fires one shot each time.
 - In The Khallos Express, the health pack in the safe (Container Health 1) only appears if you let Harry Tipper
   open it. Doing something else first means it never spawns until the mission is restarted.
 

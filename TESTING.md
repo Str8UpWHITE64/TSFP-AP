@@ -28,7 +28,10 @@ adds patches. By hand:
     python apworld/timesplittersfp/patcher.py "<original image>" --mouse
     python apworld/timesplittersfp/patcher.py "<image>" --verify
 
-The randomizer patches: the story gate (every mission can be locked), the gun pak mount (Story can load any
+The randomizer patches: the hard-coded weapon checks (enemy shotgun handling, the Plasma Autorifle's bursts,
+one shot per firing animation for launchers, snipers and, new, shotguns, so a guard leaning out of
+cover does not spray one, and so on compared the held gun-table row with fixed numbers; they now
+compare the held weapon's stats index, which moves with the shuffle, so a shuffled gun is handled as itself), the story gate (every mission can be locked), the gun pak mount (Story can load any
 gun), the return to the menu after a mission (two sequencer sites, which also clear the menu's "carry on the
 story" state), the gun precache (a level still loads its own guns' floor models when the shuffle swaps them out),
 a camera fix (the camera update reads a zeroed stand-in while a level is torn down), and the intro skip (the
@@ -77,6 +80,36 @@ For the PopTracker pack the client publishes the mission and map area the player
    gain to the same share of the new gun's own maximum (half a Pistol clip's worth is half a rocket load).
 5. Health and armour checks: taking a pack (on foot or with the uplink) sends its check.
 6. Mouse look: on foot, turrets, tanks and security cameras; nothing moves while the game is paused.
+
+## Music
+
+`music.py`, run by the client just before Dolphin starts (host.yaml `music_shuffle`, `music_folder`, `music_seed`,
+`ffmpeg_path`), together with the voice pack below. The game opens every track by name through the disc's file table, so a shuffle is file-table
+entries pointing at other tracks' data, and a custom song is data written over a track this launch does not use (or
+one of four files the game never opens; on a plain ISO also the free space after the last file). 58 level and menu
+tracks shuffle; the two stingers shuffle with songs from an `events` subfolder; the 20 cutscene tracks never change.
+Songs must be Ogg Vorbis, stereo, 32000 Hz (the player has two fixed per-channel buffers and plays back at 32 kHz);
+custom songs are converted to that with ffmpeg, loudness-normalised to -10 LUFS (the game's own music is around
+-11 to -9), and cached in Archipelago's cache folder. Overwritten game tracks are backed up there first and put
+back at the next launch; `off` returns the copy to exactly what it was.
+
+To check: each mode launches and the title music matches it; a custom song plays in a level at the right pitch and
+volume; switching back to `off` restores the normal soundtrack.
+
+## Voice packs
+
+`voice.py` (host.yaml `voice_disc`). A European disc differs from the US one only by its sound pack
+(`pak/sounds_<f|g|i|s>.pak`: every sound effect plus the in-level dialogue) and its cutscene tracks
+(`music/<language>/cs*.ogg`, with the dialogue mixed in). The pack lists the same sounds in the same order as the US
+one; the index at its end files each sound under crc32 of its path, and voice lines (marked `!` in
+`sound/sounddata`) under the language's folder (`sfx/french/...`) where the US game asks for `sfx/...`. So the pack
+is copied with those hashes re-filed under the US paths, and installed over `sounds_e.pak` with the cutscene tracks
+under the US names; the game's code is not changed. The pack is a little bigger than the English one, so the file
+after it moves into the free space of a plain ISO, which is why a voice disc makes the patched copy an ISO. The
+voices are only rewritten when the voice disc changes; music is planned around the space they use, and both are
+undone the same way.
+
+To check: in-level dialogue and cutscenes are in the disc's language; clearing `voice_disc` brings English back.
 
 ## Memory card
 

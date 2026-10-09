@@ -53,9 +53,40 @@ class TSFPSettings(Group):
         """Mouse look: the client starts a mouse driver alongside the game (Windows). F8 turns
         capture on/off, F6/F7 lower/raise the sensitivity."""
 
+    class MusicShuffle(str):
+        """Music, applied each time the client launches the game:
+        off             - the normal soundtrack
+        game_music      - the level and menu music shuffled
+        game_and_custom - your songs join the game's, and the level and menu music is picked from both
+        custom_only     - as many of your songs as fit replace game tracks, shuffled in with the rest
+        Cutscene music is never changed (it carries the dialogue). Your songs go in music_folder; put
+        short stingers (mission complete, challenge won) in an "events" subfolder."""
+
+    class MusicFolder(str):
+        """Folder (or .zip) of your songs, in any common audio format. Needs ffmpeg installed (Windows:
+        winget install Gyan.FFmpeg; macOS: brew install ffmpeg); each song is converted once and matched
+        to the game's volume. Asked for the first time a custom mode needs it."""
+
+    class MusicSeed(int):
+        """0 shuffles the music anew every launch; any other number keeps the same shuffle."""
+
+    class FfmpegPath(str):
+        """ffmpeg executable for converting your songs. Leave empty to find it automatically."""
+
+    class VoiceDisc(str):
+        """Your own European disc image of the game (French, German, Italian or Spanish) to hear its
+        voices in the randomizer: in-level dialogue and cutscenes. Any format Dolphin reads (RVZ uses the
+        DolphinTool that comes with Dolphin). Empty for the English voices. Menus and subtitles stay in
+        English."""
+
     dolphin_path: DolphinPath = DolphinPath(None)
     game_path: GamePath = GamePath(None)
     mouse_look: typing.Union[MouseLook, bool] = True
+    music_shuffle: MusicShuffle = MusicShuffle("off")
+    music_folder: MusicFolder = MusicFolder("")
+    music_seed: MusicSeed = MusicSeed(0)
+    ffmpeg_path: FfmpegPath = FfmpegPath("")
+    voice_disc: VoiceDisc = VoiceDisc("")
 
 
 def run_client(*args: str) -> None:

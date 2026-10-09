@@ -26,7 +26,7 @@ PKG = "timesplittersfp"
 # gen_header.py is deliberately absent: it exists to keep a C++ client's id tables in
 # sync with data.py, and the GameCube client is Python and imports data.py directly.
 # memmap.py replaces it, holding the port-specific addresses data.py must not carry.
-MEMBERS = ["__init__.py", "data.py", "options.py", "memmap.py", "pickups.py", "patcher.py", "mouse_driver.py",
+MEMBERS = ["__init__.py", "data.py", "options.py", "memmap.py", "pickups.py", "patcher.py", "mouse_driver.py", "music.py", "voice.py",
            "client/__init__.py", "client/tsfp_client.py", "client/gamestate.py", "client/tracker_areas.json",
            "archipelago.json"]
 DEFAULT_INSTALL = r"C:\ProgramData\Archipelago\custom_worlds"

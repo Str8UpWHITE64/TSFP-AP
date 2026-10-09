@@ -83,6 +83,17 @@ class Image:
         self.file.seek(place)
         self.file.write(payload)
 
+    def write_span(self, offset, payload):
+        """write() across any number of blocks; every block touched must already be stored."""
+        if not self.ciso:
+            self.write(offset, payload)
+            return
+        done = 0
+        while done < len(payload):
+            span = min(len(payload) - done, self.block_size - ((offset + done) % self.block_size))
+            self.write(offset + done, payload[done:done + span])
+            done += span
+
     def close(self):
         self.file.close()
 
@@ -270,6 +281,80 @@ SKIP_INTRO_HOOK = (
     "intro skip: the pre-mission cutscene asks the cave whether to skip",
 )
 
+# --- weapons: the game's hard-coded weapon checks follow the weapon ------------------
+# AI (and some player) code compares the held gun-table row (pawn +0x94) with fixed slot
+# numbers: the shotguns (14, 15, 53) get the shotgun animation and pacing, the Plasma
+# Autorifle its long burst, launchers and snipers fire single shots, and so on. The weapon
+# shuffle moves a gun's data to another row, so those checks stayed with the row: a
+# Dispersion Gun on the machine gun's row was fired like a machine gun. Each check whose
+# register is only compared now reads the held weapon's stats index (pawn +0x204, the
+# right-hand stats, which travel with the shuffle) and compares it with the same weapon's
+# stats index. Unshuffled, the result is the same. (Ghidra-checked; the remote mines' and
+# Mag-Charger's checks also switch rows by number and are left alone.)
+WEAPON_IDENTITY_WORDS = [
+    (0x8025DB54, [0x801F0094], [0x801F0204]),
+    (0x8025DB58, [0x2C00000E], [0x2C000005]),
+    (0x8025DB60, [0x2C000035], [0x2C000020]),
+    (0x8025DE64, [0x801F0094], [0x801F0204]),
+    (0x8025DE68, [0x2C00000E], [0x2C000005]),
+    (0x8025DE70, [0x2C000035], [0x2C000020]),
+    (0x8025DF8C, [0x801F0094], [0x801F0204]),
+    (0x8025DF90, [0x2C00000E], [0x2C000005]),
+    (0x8025DF98, [0x2C000035], [0x2C000020]),
+    (0x8025EBD0, [0x801E0094], [0x801E0204]),
+    (0x8025EBD4, [0x2C00000E], [0x2C000005]),
+    (0x8025EBDC, [0x2C000035], [0x2C000020]),
+    (0x8025EBE4, [0x2C00000F], [0x2C000006]),
+    (0x80263198, [0x801F0094], [0x801F0204]),
+    (0x8026319C, [0x2C00000E], [0x2C000005]),
+    (0x802631A4, [0x2C000035], [0x2C000020]),
+    (0x802631AC, [0x2C00000F], [0x2C000006]),
+    (0x8027ABC0, [0x807F0094], [0x807F0204]),
+    (0x8027ABC8, [0x2C03000E], [0x2C030005]),
+    (0x8027ABD0, [0x2C030035], [0x2C030020]),
+    (0x8027ABD8, [0x2C03000F], [0x2C030006]),
+    (0x8027B26C, [0x807F0094], [0x807F0204]),
+    (0x8027B274, [0x2C03000E], [0x2C030005]),
+    (0x8027B27C, [0x2C030035], [0x2C030020]),
+    (0x8027B284, [0x2C03000F], [0x2C030006]),
+    (0x802B496C, [0x801C0094], [0x801C0204]),
+    (0x802B4970, [0x2C00000E], [0x2C000005]),
+    (0x802B4978, [0x2C000035], [0x2C000020]),
+    (0x802B4980, [0x2C00000F], [0x2C000006]),
+    (0x802B6168, [0x80040094], [0x80040204]),
+    (0x802B616C, [0x2C00000E], [0x2C000005]),
+    (0x802B6174, [0x2C000035], [0x2C000020]),
+    (0x801B6760, [0x809E0094], [0x809E0204]),
+    (0x801B6764, [0x2C040023], [0x2C040013]),
+    (0x802C2AFC, [0x801D0094], [0x801D0204]),
+    (0x802C2B00, [0x2C000023], [0x2C000013]),
+    (0x802C2B6C, [0x801D0094], [0x801D0204]),
+    (0x802C2B70, [0x2C000023], [0x2C000013]),
+    (0x8025B064, [0x801F0094], [0x801F0204]),
+    (0x8025B068, [0x2C00000C], [0x2C000004]),
+    (0x801B6998, [0x801E0094], [0x801E0204]),
+    (0x801B699C, [0x2C000010], [0x2C000007]),
+    (0x8013B410, [0x801F0094], [0x801F0204]),
+    (0x8013B414, [0x2C000012], [0x2C000008]),
+    (0x802B4F24, [0x801C0094], [0x801C0204]),
+    (0x802B4F28, [0x2C00001D], [0x2C00000F]),
+    (0x802B4F30, [0x2C00001E], [0x2C000010]),
+    # Shots fired by an animation (a guard leaning out of cover sprays: the animation fires
+    # many times): launchers and snipers (rows 29, 30, 18, 19, 32) fire only once per
+    # animation. Rewritten as a stats bitmask so the shotguns (stats 5, 6, 32) join them,
+    # or a shuffled Dispersion Gun is sprayed like a machine gun from cover.
+    (0x802C3218,
+     [0x807D0094, 0x2C03001D, 0x418201FC, 0x2C03001E, 0x418201F4,     # lwz r3,0x94(r29); 29? 30?
+      0x3803FFEE, 0x28000001, 0x408101E8, 0x2C030020, 0x418201E0],    # 18..19? 32? -> once only
+     [0x807D0204,                                                      # lwz r3,0x204(r29)
+      0x3C0006C1, 0x6000C000,                                          # r0 = stats 5,6,8,9,15,16,17
+      0x7C001831, 0x418001F4,                                          # slw. r0,r0,r3; blt once only
+      0x2C030020, 0x418201EC,                                          # stats 32? -> once only
+      NOP, NOP, NOP]),
+]
+WEAPON_IDENTITY = [(ram, original, patched, "weapons: hard-coded weapon check follows the weapon (%08x)" % ram)
+                   for ram, original, patched in WEAPON_IDENTITY_WORDS]
+
 PATCHES = [
     STORY_GATE,
     PAK_MOUNT_TEST,
@@ -281,7 +366,7 @@ PATCHES = [
     CAMERA_GUARD_HOOK,
     SKIP_INTRO_CAVE,
     SKIP_INTRO_HOOK,
-]
+] + WEAPON_IDENTITY
 
 
 # --- optional: mouse look (--mouse) ---------------------------------------------
@@ -374,9 +459,26 @@ REVERT = [
 ]
 
 
-def apply(path, out_path, verify_only=False, patches=None, title="patches", header=True, in_place=False):
+DISC_SIZE = 1459978240
+
+
+def write_iso(path, out_path):
+    """A plain ISO of the disc at `path` (any format Image reads): the full disc size, so the
+    free space after the last file is real space a later step can use."""
+    source = Image(path)
+    try:
+        with open(out_path, "wb") as out:
+            for off in range(0, DISC_SIZE, 16 << 20):
+                out.write(source.read(off, min(16 << 20, DISC_SIZE - off)))
+    finally:
+        source.close()
+
+
+def apply(path, out_path, verify_only=False, patches=None, title="patches", header=True, in_place=False,
+          as_iso=False):
     """Patch a copy of `path` into `out_path` -- or, with in_place, `path` itself (only for an
-    image this patcher already wrote, e.g. upgrading "(AP)" after an update)."""
+    image this patcher already wrote, e.g. upgrading "(AP)" after an update). as_iso writes the
+    copy as a plain ISO whatever the original's format."""
     patches = PATCHES if patches is None else patches
     if verify_only or in_place:
         target = path
@@ -384,7 +486,10 @@ def apply(path, out_path, verify_only=False, patches=None, title="patches", head
         if os.path.abspath(path) == os.path.abspath(out_path):
             raise SystemExit("refusing to write over the original image")
         print("copying %s -> %s" % (os.path.basename(path), os.path.basename(out_path)))
-        shutil.copyfile(path, out_path)
+        if as_iso:
+            write_iso(path, out_path)
+        else:
+            shutil.copyfile(path, out_path)
         target = out_path
 
     image = Image(target, writable=not verify_only)
