@@ -20,6 +20,7 @@ import os
 import zlib
 import subprocess
 import sys
+import time
 import typing
 
 import dolphin_memory_engine as dme
@@ -40,6 +41,8 @@ from . import gamestate
 GAME = "TimeSplitters Future Perfect"
 SLOT_DATA_VERSION = 4
 POLL_INTERVAL = 0.4
+TRAP_IDS = [data.item_name_to_id[name] for name in data.TRAP_ITEMS]
+TRAP_SECONDS = 30
 
 # Routine detail (objectives, pickups, gating, the shuffle) goes to the log file only: the
 # window shows the checks sent, the server's messages, and anything the player must act on.
@@ -155,6 +158,8 @@ class TSFPContext(CommonContext):
         self.pending_profile = None     # tagged on the last poll, confirmed on this one
         self.force_profile = None       # /use_profile
         self.profile_said = None
+        self.traps_received = [0] * len(TRAP_IDS)
+        self.trap = None                # (index, bit, ends at, cheat state before)
 
     def run_gui(self):
         from kvui import GameManager
@@ -186,6 +191,7 @@ class TSFPContext(CommonContext):
             # which profiles have had the yaml preferences written, so it happens once
             self.set_notify(self.prefs_key())
             self.set_notify(self.profile_key())
+            self.set_notify(self.traps_key())
             self.profile_said = None
             slot_of_item = {name: slot for slot, name in data.WEAPON_ITEM_OF.items()}
             for name in self.slot_data.get("starting_weapons") or []:
@@ -205,6 +211,8 @@ class TSFPContext(CommonContext):
             before = (len(self.granted_units), len(self.granted_weapons), self.time_crystals)
             for item in args["items"]:
                 self.handle_item(item.item)
+            ids = [item.item for item in self.items_received]
+            self.traps_received = [ids.count(i) for i in TRAP_IDS]
             after = (len(self.granted_units), len(self.granted_weapons), self.time_crystals)
             if after != before:
                 note("Received %d item(s): %d unlock(s), %d weapon(s), %d Time Crystal(s) held.",
@@ -426,7 +434,7 @@ class TSFPContext(CommonContext):
         if not self.warned_about_writing:
             self.warned_about_writing = True
             note("Applying Archipelago lock state to profile %r.", self.profile_name)
-        gamestate.clear_unlock_overrides()
+        gamestate.clear_unlock_overrides(keep_extras=self.trap is not None)
         gamestate.apply_event_gate(self.granted_events())
         if self.patched and self.patched[0]:
             for g in gamestate.gamedata_blocks(profile):
@@ -500,6 +508,56 @@ class TSFPContext(CommonContext):
                     self.profile_name, "on" if prefs.get("inverse_look") else "off",
                     "on" if prefs.get("auto_lookahead") else "off", names.get(change, change),
                     "".join(", " + e for e in extras))
+
+    # ---- traps -----------------------------------------------------------
+    def traps_key(self):
+        return "tsfp_traps_%s_%s" % (self.team, self.slot)
+
+    def apply_traps(self):
+        """One trap at a time, TRAP_SECONDS each, in story missions only.
+
+        Serial on purpose: on TS2, Big Heads and Small Heads together crash the game. A
+        trap received elsewhere waits for the next story mission; leaving the mission ends
+        the running one early, and it still counts as delivered. How many of each have
+        gone off is kept on the server, so a restarted client does not repeat them.
+        """
+        if self.read_only or self.traps_key() not in self.stored_data:
+            return
+        done = list(self.stored_data[self.traps_key()] or [])[:len(TRAP_IDS)]
+        done += [0] * (len(TRAP_IDS) - len(done))
+        in_story = gamestate.current_mission() is not None and gamestate.player_pawn() is not None
+        if self.trap is not None:
+            index, bit, ends, before = self.trap
+            if time.monotonic() < ends and in_story:
+                gamestate.cheat_on(bit)
+                return
+            gamestate.cheat_off(bit, before)
+            self.trap = None
+            done[index] += 1
+            self.stored_data[self.traps_key()] = done
+            asyncio.create_task(self.send_msgs([{
+                "cmd": "Set", "key": self.traps_key(), "default": [], "want_reply": True,
+                "operations": [{"operation": "replace", "value": done}]}]))
+            note("%s is over.", data.TRAP_ITEMS[index])
+            return
+        if not in_story:
+            return
+        for index, name in enumerate(data.TRAP_ITEMS):
+            if done[index] < self.traps_received[index]:
+                bit = data.TRAP_CHEATS[name]
+                self.trap = (index, bit, time.monotonic() + TRAP_SECONDS, gamestate.cheat_state(bit))
+                gamestate.cheat_on(bit)
+                logger.info("%s! (%d seconds)", name, TRAP_SECONDS)
+                return
+
+    def end_trap(self):
+        """Take a running trap's cheat away, e.g. when the client closes."""
+        if self.trap is not None and self.hooked:
+            try:
+                gamestate.cheat_off(self.trap[1], self.trap[3])
+            except Exception:
+                pass
+        self.trap = None
 
     def remap_for(self, mission: typing.Optional[int]) -> dict:
         if self.weapon_remap_by_level:
@@ -631,6 +689,7 @@ class TSFPContext(CommonContext):
         return bool(gamestate.story_words(gamedata)[di] >> (len(data.STORY) - 1) & 1)
 
     async def shutdown(self):
+        self.end_trap()
         if self.dolphin_process is not None and self.dolphin_process.poll() is None:
             logger.info("Closing the Dolphin instance this client started.")
             try:
@@ -690,6 +749,7 @@ async def game_loop(ctx: TSFPContext):
                             ", ".join(gamestate.LOCATION_NAME.get(l, str(l)) for l in sorted(new)))
             ctx.apply_gate(profile)
             ctx.apply_preferences(profile)
+            ctx.apply_traps()
             await ctx.publish_map_area()
             if not ctx.goal_reached and ctx.goal_met(gamedata):
                 ctx.goal_reached = True

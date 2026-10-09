@@ -231,6 +231,17 @@ class SkipIntroCutscenes(DefaultOnToggle):
     display_name = "Skip Intro Cutscenes"
 
 
+class TrapCount(Range):
+    """How many traps to place, in place of filler. A trap switches on one of the game's
+    cheats for 30 seconds during a story mission: big heads, rotating heads, cardboard
+    enemies, the 8-Bit screen and so on, one trap at a time. Traps received outside a story
+    mission wait for the next one. Without Story in Game Modes there are none."""
+    display_name = "Trap Count"
+    range_start = 0
+    range_end = 60
+    default = 8
+
+
 @dataclass
 class TSFPOptions(PerGameCommonOptions):
     game_modes: GameModes
@@ -254,4 +265,5 @@ class TSFPOptions(PerGameCommonOptions):
     pickup_checks: PickupChecks
     time_to_split_pickups: TimeToSplitPickups
     skip_intro_cutscenes: SkipIntroCutscenes
+    trap_count: TrapCount
     start_inventory_from_pool: StartInventoryPool

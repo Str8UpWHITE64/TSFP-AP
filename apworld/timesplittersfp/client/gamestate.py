@@ -396,12 +396,45 @@ def apply_story_gate(gamedata: int, granted_missions: typing.Set[int]) -> bool:
     return True
 
 
-def clear_unlock_overrides():
+def clear_unlock_overrides(keep_extras: bool = False):
+    """keep_extras while a trap runs: its cheat needs the extras override."""
     for k in range(1, 6):
+        if keep_extras and k == mm.UNLOCK_KIND_EXTRAS:
+            continue
         if dme.read_bytes(mm.UNLOCK_OVERRIDE_BYTES + k, 1) != b"\0":
             dme.write_bytes(mm.UNLOCK_OVERRIDE_BYTES + k, b"\0")
     if u32(mm.UNLOCK_ALL_GLOBAL):
         w32(mm.UNLOCK_ALL_GLOBAL, 0)
+
+
+# --- cheats: trap items -------------------------------------------------------------
+class CheatState(typing.NamedTuple):
+    enabled: bool
+    allowed: bool
+
+
+def cheat_state(bit: int) -> CheatState:
+    return CheatState(bool(u32(mm.CHEATS_ENABLED) >> bit & 1), bool(u32(mm.CHEATS_ALLOWED) >> bit & 1))
+
+
+def cheat_on(bit: int) -> None:
+    """Put one cheat in effect. Re-asserted every poll: a level load rebuilds the allowed
+    mask, and the gate clears the override when no trap is running."""
+    w32(mm.CHEATS_ENABLED, u32(mm.CHEATS_ENABLED) | 1 << bit)
+    w32(mm.CHEATS_ALLOWED, u32(mm.CHEATS_ALLOWED) | 1 << bit)
+    override = mm.UNLOCK_OVERRIDE_BYTES + mm.UNLOCK_KIND_EXTRAS
+    if dme.read_bytes(override, 1) != b"\1":
+        dme.write_bytes(override, b"\1")
+
+
+def cheat_off(bit: int, before: CheatState) -> None:
+    """Undo cheat_on, leaving whatever was already there before the trap. The override
+    goes back to 0, where the gate keeps it."""
+    if not before.enabled:
+        w32(mm.CHEATS_ENABLED, u32(mm.CHEATS_ENABLED) & ~(1 << bit))
+    if not before.allowed:
+        w32(mm.CHEATS_ALLOWED, u32(mm.CHEATS_ALLOWED) & ~(1 << bit))
+    dme.write_bytes(mm.UNLOCK_OVERRIDE_BYTES + mm.UNLOCK_KIND_EXTRAS, b"\0")
 
 
 # --- the player pawn ---------------------------------------------------------------

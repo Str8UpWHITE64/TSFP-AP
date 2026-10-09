@@ -80,6 +80,8 @@ For the PopTracker pack the client publishes the mission and map area the player
    gain to the same share of the new gun's own maximum (half a Pistol clip's worth is half a rocket load).
 5. Health and armour checks: taking a pack (on foot or with the uplink) sends its check.
 6. Mouse look: on foot, turrets, tanks and security cameras; nothing moves while the game is paused.
+7. Traps: each switches its cheat on for 30 seconds in a story mission, one at a time, then off again; one
+   received in a menu waits for the next mission, and a restarted client does not repeat those already done.
 
 ## Music
 
@@ -131,4 +133,5 @@ Medals are cumulative (a Gold fires Bronze + Silver + Gold). Which checks are ac
 every location id is pre-allocated, so options never renumber anything.
 
 Items: one unlock per challenge, arcade match and story mission (61); Time Crystals (gate the final mission); one
-weapon item per weapon family (36, with Weapon Gating); filler (Banana).
+weapon item per weapon family (36, with Weapon Gating); traps (`trap_count`, each one of ten of the game's
+cheats); filler (Banana).

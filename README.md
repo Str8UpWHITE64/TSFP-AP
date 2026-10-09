@@ -11,6 +11,8 @@ Features:
 - **Play the modes you want**: any mix of Story, Arcade League and Challenges, each with its own goal.
 - **Weapon Gating and Weapon Shuffle**: weapons become items, and story levels can hand out a different gun
   in each weapon's place.
+- **Traps**: big heads, rotating heads, cardboard enemies, the 8-Bit screen and more, switched on for 30
+  seconds in the middle of a story mission.
 - **Mouse look** built in: no extra program to install or run.
 - **Music shuffle**, with your own songs if you like: any format, converted and volume-matched for you.
 - **Voices in French, German, Italian or Spanish** from your own European copy of the game.
@@ -118,6 +120,10 @@ The template yaml from the Launcher lists every option with its choices.
   item (a handful never confirmed reachable only hold filler). The Temporal Uplink collects them even at full
   health. Time to Split's are a separate option, as
   that mission has no uplink.
+- **Trap Count** (8 by default): traps in place of filler. Each switches on one of the game's cheats for
+  30 seconds during a story mission, one at a time: Big Head, Small Head, Big Hands, Fat, Rotating Heads,
+  Cardboard Enemies, Slow Death, Old Film, 8-Bit or Cascade. Traps received elsewhere wait for the next
+  story mission. Without Story there are none.
 - **Skip Intro Cutscenes** (on by default): starting a story mission goes straight into it, without the
   intro cutscene and its loading screen. The cutscenes still unlock in the gallery.
 - **Profile preferences**: Inverse Look, Auto Lookahead, Weapon Change and more are written to your profile

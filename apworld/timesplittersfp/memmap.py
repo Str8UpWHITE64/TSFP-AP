@@ -98,6 +98,20 @@ LEAGUE_REQ = {1: 0x8047629C, 2: 0x804762B0}     # league index -> record address
 # Per-kind debug "unlock everything" bytes; must stay 0.                     [static]
 UNLOCK_OVERRIDE_BYTES = 0x80610CF8     # +1 story +2 arcade +3 challenge +4 character +5 extras
 UNLOCK_ALL_GLOBAL = 0x806125F4         # the UNLOCK FEATURES toggle; must stay 0
+UNLOCK_KIND_EXTRAS = 5
+
+# --- cheats (trap items) --------------------------------------------------------
+# Bit N is cheat N, numbered as data.TRAP_CHEATS. A cheat is in effect only while all
+# three agree, and every check site re-reads them (FUN_801c0894 & enabled & allowed):
+#   CHEATS_ENABLED  what the Extras menu switched on (FUN_801c0968 sets a bit)
+#   CHEATS_ALLOWED  what this mode permits, rebuilt at every level load from the extras
+#                   table's mode masks (FUN_801c0818); Story allows all but 2, 7, 12
+#   unlocked        FUN_801c1314: the extra's medal requirement, or the extras override
+#                   byte (UNLOCK_OVERRIDE_BYTES + UNLOCK_KIND_EXTRAS)
+# The client's medal gate leaves most extras locked, so a trap raises the override for
+# its duration as well.                                                      [static]
+CHEATS_ENABLED = 0x80612600
+CHEATS_ALLOWED = 0x806125FC
 
 # --- client session tag (low RAM) ---------------------------------------------
 # The weapon shuffle is computed from a snapshot of the tables as the game booted. A

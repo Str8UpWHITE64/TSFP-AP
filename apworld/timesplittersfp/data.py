@@ -64,6 +64,28 @@ TROPHY_TIERS = ["Bronze", "Silver", "Gold", "Platinum"]     # game tier 1..4
 FILLER_ITEM = "Banana"
 TIME_CRYSTAL_ITEM = "Time Crystal"
 
+# --- Trap items: the client switches on one of the game's cheats for a while, in Story missions only (a trap can
+# never spoil an Arcade or Challenge medal). Trap item -> cheat index (= its bit in the cheat masks, memmap.py). The
+# catalogue is TS2's plus three screen filters: 0 Big Heads, 1 Small Heads, 2 Human Gun Sounds, 3 Big Hands,
+# 4 Infinite Ammo, 5 Paintball, 6 Fat Characters, 7 Skating, 8 All Characters Cloaked, 9 Slow Motion Deaths,
+# 10 Cardboard Characters, 11 Rotating Heads, 12 Silly Hats, 13 Old Film, 14 8-Bit, 15 Cascade. Story allows all
+# but 2, 7 and 12. All Characters Cloaked is left out: it cloaks characters as they spawn (FUN_800f9c40) and nothing
+# uncloaks them when it goes off, so enemies that spawned during the trap stayed invisible for the level.
+TRAP_CHEATS = {
+    "Big Head Trap":           0,
+    "Small Head Trap":         1,
+    "Big Hands Trap":          3,
+    "Fat Trap":                6,
+    "Rotating Heads Trap":    11,
+    "Cardboard Enemies Trap": 10,
+    "Slow Death Trap":         9,
+    "Old Film Trap":          13,
+    "8-Bit Trap":             14,
+    "Cascade Trap":           15,
+}
+TRAP_ITEMS = list(TRAP_CHEATS)
+TRAP_ITEM_ID_BASE = 0x910      # item id = BASE_ID + 0x910 + i (as on TS2)
+
 _ALL = frozenset(("Easy", "Normal", "Hard")); _NONE = frozenset()
 
 # --- Story objectives -> AP locations ---
@@ -533,6 +555,8 @@ FINAL_STORY_ITEM = ITEM_OF[FINAL_STORY_MISSION]
 item_name_to_id = {ITEM_OF[n]: BASE_ID + i for i, n in enumerate(UNIT_NAMES)}
 item_name_to_id[TIME_CRYSTAL_ITEM] = BASE_ID + 0x900
 item_name_to_id[FILLER_ITEM] = BASE_ID + 0x901
+for _i, _tn in enumerate(TRAP_ITEMS):
+    item_name_to_id[_tn] = BASE_ID + TRAP_ITEM_ID_BASE + _i
 for _ws in weapon_gated_slots():
     item_name_to_id[WEAPON_ITEM_OF[_ws]] = BASE_ID + WEAPON_ITEM_ID_BASE + _ws
 assert len(set(item_name_to_id.values())) == len(item_name_to_id), "duplicate item id"
@@ -624,4 +648,5 @@ item_name_groups = {
     "Challenge": {ITEM_OF[e[2]] for e in TROPHY_EVENTS if e[0] == "challenge"},
     "Story":     {ITEM_OF[m] for m in STORY},
     "Weapons":   set(WEAPON_ITEM_OF.values()),
+    "Traps":     set(TRAP_ITEMS),
 }

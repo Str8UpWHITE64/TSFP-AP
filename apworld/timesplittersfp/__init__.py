@@ -172,6 +172,7 @@ class TSFPWorld(World):
             self.shuffle = False
             self.options.weapon_gating.value = 0
             self.options.weapon_shuffle.value = 0
+            self.options.trap_count.value = 0       # traps only go off in story missions
         di = self.options.story_difficulty.value
         self.diffs = frozenset(data.STORY_DIFFICULTIES[:di + 1])
         self.goal_difficulty = data.STORY_DIFFICULTIES[di]
@@ -283,6 +284,8 @@ class TSFPWorld(World):
     def create_item(self, name: str) -> TSFPItem:
         if name == data.FILLER_ITEM:
             classification = ItemClassification.filler
+        elif name in data.TRAP_CHEATS:
+            classification = ItemClassification.trap
         elif name in data.WEAPON_ITEM_NAMES:
             classification = (ItemClassification.progression if self.gating else ItemClassification.useful)
         else:
@@ -353,6 +356,15 @@ class TSFPWorld(World):
                                 "%d/%d) -- low check density.", GAME, self.player, self.tc_total,
                                 self.tc_required, want_total, want_required)
         pool += [self.create_item(data.TIME_CRYSTAL_ITEM) for _ in range(self.tc_total)]
+
+        # Traps take the place of filler, drawn at random from the set; trimmed if there is not room.
+        traps = self.random.choices(data.TRAP_ITEMS, k=self.options.trap_count.value)
+        room = len(active_locs) - len(pool)
+        if len(traps) > room:
+            logging.warning("%s (player %d): %d traps requested but only %d filler slots -- trimming to fit.",
+                            GAME, self.player, len(traps), room)
+            traps = traps[:max(0, room)]
+        pool += [self.create_item(t) for t in traps]
 
         while len(pool) < len(active_locs):
             pool.append(self.create_item(data.FILLER_ITEM))
