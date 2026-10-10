@@ -88,7 +88,31 @@ Ogg Vorbis, stereo, 32000 Hz are used, and the client says so.
 Then put your songs in a folder (or a `.zip`), in any common format: MP3, FLAC, WAV, OGG, M4A and so on. The client
 asks for the folder the first time and remembers it as `music_folder`; each song is converted and matched to the
 game's volume once. Songs in an `events` subfolder are used for the two short stingers (mission complete, challenge
-won); everything else is level and menu music.
+won); everything else is level and menu music. For example:
+
+```
+C:/Users/You/Music/TSFP Songs/
+    Song One.mp3
+    Song Two.flac
+    events/
+        Victory Jingle.ogg
+```
+
+The settings in `host.yaml` then look like this (yours will have your own paths):
+
+```yaml
+timesplittersfp_options:
+  music_shuffle: "game_and_custom"
+  music_folder: "C:/Users/You/Music/TSFP Songs"
+  music_seed: 0
+  ffmpeg_path: ""
+```
+
+`music_folder` is the folder that holds the songs (or the `.zip` itself), not a single song. If you type a path
+yourself, keep the quotes and **use forward slashes** (`C:/Users/...`): inside quotes, a backslash means something
+else to the file and can break it. On macOS or Linux a path looks like `"/Users/you/Music/TSFP Songs"`. Leave
+`ffmpeg_path` empty unless you downloaded ffmpeg yourself; then point it at the program, e.g.
+`"C:/ffmpeg/bin/ffmpeg.exe"`.
 
 `music_seed: 0` gives a new shuffle every launch; any other number keeps the same one. Cutscene music is never
 changed, since it carries the dialogue. Your songs take the place of game tracks on the patched copy only, and
@@ -99,6 +123,14 @@ the next launch puts those tracks back before it changes anything.
 If you own a European release of the game in another language (French, German, Italian or Spanish), set
 `voice_disc` under `timesplittersfp_options` in `host.yaml` to that disc image. The client takes its voices and
 puts them in the randomizer: the dialogue in levels and in cutscenes. Menus and subtitles stay in English.
+
+```yaml
+timesplittersfp_options:
+  voice_disc: "C:/Users/You/Games/TimeSplitters - Future Perfect (France).rvz"
+```
+
+Point it at the disc image file itself, not the folder it is in, and use forward slashes as for the music folder.
+There is no language setting: the client reads the language from the disc.
 
 Any format Dolphin reads works; RVZ uses the DolphinTool that comes with Dolphin. The voices are prepared once.
 With a voice disc set, the patched copy is written as a plain ISO (`<name> (AP).iso`), because it needs the
