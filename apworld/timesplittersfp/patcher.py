@@ -355,6 +355,66 @@ WEAPON_IDENTITY_WORDS = [
 WEAPON_IDENTITY = [(ram, original, patched, "weapons: hard-coded weapon check follows the weapon (%08x)" % ram)
                    for ram, original, patched in WEAPON_IDENTITY_WORDS]
 
+# --- weapons: a shuffled gun's ammo is scaled where the game gives it ------------------
+# Under the shuffle, slot X's gun is Y but fires X's ammo type, whose maximum the client
+# rewrites to Y's. Pickups, enemy drops and scripted handouts still give X-sized amounts,
+# so each gain has to become the same share of Y's maximum. Watching reserve ammo from
+# outside could not do that: the game caps a gain at the (already rewritten) maximum before
+# anyone sees it, and switching guns puts the magazine back into reserve, which looked like
+# a pickup.
+#
+# FUN_801a9a8c(pawn, type, n) is the only way ammo is gained. Its third argument move
+#     801a9aa8  or r28,r5,r5
+# becomes a call into a cave that sets r28 = n * num / den, rounded up, from a word table
+# the client writes at 0x80002D00 (memmap AMMO_SCALE_TABLE: num << 16 | den per type, Y's
+# maximum over X's). The game then adds and caps as usual. Zero words (no client, the front
+# end, an unshuffled type) leave n alone, and only positive n is scaled. The cave is a leaf
+# that keeps r3/r4 for the call that follows and uses only r5-r7.
+#
+# The pickup builder FUN_80038544 doubles a pickup when the live gun-table row is a dual
+# gun:
+#     80038984  mullw r21,r4,r20    ; primary amount * 1 or 2
+#     80038988  mullw r20,r0,r20    ; alt amount     * 1 or 2
+# When X's x2 row holds Y's single gun (Y has no x2), the pickup gave half. The first
+# multiply becomes a call into a cave that takes the factor from a byte table at
+# 0x80002DB0 (memmap AMMO_DUAL_TABLE: X's own factor per row, 0 = keep the live one) and
+# does both multiplies; the second becomes a nop.
+#
+# The give cave lives in FUN_801c04c8 (18 words), whose only caller is the UNLOCK FEATURES
+# cheat callback that CHEAT_CALLBACK makes dead; the dual cave in the free words of
+# FUN_801c0a88's dead tail between the intro-skip cave and the camera guard. Every word was
+# disassembled back with Ghidra and both caves were executed against a model of the tables.
+AMMO_GIVE_CAVE = (
+    0x801C04C8,
+    [0x9421FFF0, 0x7C0802A6, 0x3CA0805C, 0x7C641B78, 0x90010014, 0x38652668, 0x38A0003F, 0x481CAFE9,
+     0x3C60805C, 0x38000078, 0x38632668, 0x38800000, 0x9883003F, 0x900DACB8, 0x80010014, 0x7C0803A6,
+     0x38210010, 0x4E800020],
+    [0x7CBC2B78, 0x2804002C, 0x4C800020, 0x2C050000, 0x4C810020, 0x5486103A, 0x3CC68000, 0x80C62D00,
+     0x54C7043F, 0x4D820020, 0x54C6843E, 0x7CA531D6, 0x7CA53A14, 0x38A5FFFF, 0x7F853BD6, 0x4E800020,
+     NOP, NOP],
+    "weapon shuffle: cave that scales an ammo gain by the client's per-type factor",
+)
+AMMO_GIVE_HOOK = (
+    0x801A9AA8,
+    [0x7CBC2B78],                            # or r28,r5,r5
+    [0x48016A21],                            # bl <cave>
+    "weapon shuffle: every ammo gain runs through the scaling cave",
+)
+AMMO_DUAL_CAVE = (
+    0x801C0B38,
+    [0x4BE73A21, 0x3BBD0001, 0x381F049C, 0x2C1D0030, 0x7FC3012E, 0x3BFF0018, 0x4180FFE4, 0x38600000,
+     0x4BE73A01, 0x93630BF0],
+    [0x3CB38000, 0x88A52DB0, 0x2C050000, 0x41820008, 0x7CB42B78, 0x7EA4A1D6, 0x7E80A1D6, 0x4E800020,
+     NOP, NOP],
+    "weapon shuffle: cave that doubles a pickup by the slot's own dual-wield factor",
+)
+AMMO_DUAL_HOOK = (
+    0x80038984,
+    [0x7EA4A1D6, 0x7E80A1D6],                # mullw r21,r4,r20 ; mullw r20,r0,r20
+    [0x481881B5, NOP],                       # bl <cave> ; nop
+    "weapon shuffle: a placed pickup's dual-wield doubling runs through the cave",
+)
+
 PATCHES = [
     STORY_GATE,
     PAK_MOUNT_TEST,
@@ -366,7 +426,12 @@ PATCHES = [
     CAMERA_GUARD_HOOK,
     SKIP_INTRO_CAVE,
     SKIP_INTRO_HOOK,
-] + WEAPON_IDENTITY
+] + WEAPON_IDENTITY + [
+    AMMO_GIVE_CAVE,
+    AMMO_GIVE_HOOK,
+    AMMO_DUAL_CAVE,
+    AMMO_DUAL_HOOK,
+]
 
 
 # --- optional: mouse look (--mouse) ---------------------------------------------

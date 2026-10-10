@@ -121,7 +121,8 @@ CHEATS_ALLOWED = 0x806125FC
 # to a file and tagged here; a later client finds the tag and loads the file. RAM is
 # cleared when the game boots, so a fresh boot always snapshots afresh. 0x80001800 holds
 # the optional mouse block (16 bytes), 0x80001900..0x80002D00 the camera's zeroed stand-in
-# game object (CAMERA_STAND_IN below) and 0x80002F00 the precache list; the rest of
+# game object (CAMERA_STAND_IN below), 0x80002D00..0x80002DF7 the ammo tables
+# (AMMO_SCALE_TABLE, AMMO_DUAL_TABLE) and 0x80002F00 the precache list; the rest of
 # 0x80001800..0x80003000 is unused.
 SESSION_TAG_ADDR = 0x80002FF0          # 'TSFS' + u32 tag
 # 1 = skip the story missions' intro cutscenes (patcher SKIP_INTRO_*), from the seed.
@@ -146,6 +147,20 @@ PRECACHE_HOOK_APPLIED = 0x480183E5     # bl <cave at 0x801C05F0>
 CAMERA_GUARD_HOOK_ADDR = 0x8009E034
 CAMERA_GUARD_HOOK_APPLIED = 0x48122B2C # b <cave at 0x801C0B60>
 CAMERA_STAND_IN = 0x80001900           # ..0x80002D00, must stay zero
+
+# --- weapon shuffle: ammo tables (low RAM) ---------------------------------------
+# Read by the patched give-ammo routine (patcher AMMO_GIVE_CAVE): one word per ammo type,
+# (shuffled-in gun's max << 16) | native max, and every gain of that type is scaled by
+# the ratio, rounded up, before the game caps it. Zero leaves a type alone. Read by the
+# patched pickup builder (patcher AMMO_DUAL_CAVE): one byte per gun-table row, the native
+# gun's dual-wield factor (1 or 2), used in place of the live row's; zero keeps the live
+# one. Both are zero outside a shuffled story mission.
+AMMO_SCALE_TABLE = 0x80002D00          # AMMO_TYPE_COUNT words, ..0x80002DB0
+AMMO_DUAL_TABLE = 0x80002DB0           # GUN_COUNT bytes, ..0x80002DF7
+AMMO_GIVE_HOOK_ADDR = 0x801A9AA8
+AMMO_GIVE_HOOK_APPLIED = 0x48016A21    # bl <cave at 0x801C04C8>
+AMMO_DUAL_HOOK_ADDR = 0x80038984
+AMMO_DUAL_HOOK_APPLIED = 0x481881B5    # bl <cave at 0x801C0B38>
 
 PLAYER_POS_OFF = 0x64                 # player object: x, y, z floats (y up, feet)  [live]
 
@@ -237,16 +252,21 @@ GUN_UI_CALLBACK = 0x50
 # fires the ammo type at +0x14 (+0x1C: alt fire), but pickups and scripted handouts give
 # the ammo type the level's own data names -- the native gun's. So under the shuffle the
 # stats a slot borrows get that slot's native ammo types, and a shuffled-in gun draws on
-# the supply of the gun it replaces (as on TS2). Only the two ammo fields are touched. [live]
+# the supply of the gun it replaces (as on TS2). The stats also hold the default pickup
+# amounts (+0x24 story primary/alt, +0x28 other modes; s16 each), used by a placed pickup
+# or an enemy drop that names no amount of its own; those get the slot's native amounts
+# too, so everything the level hands out is sized for the native gun.           [live]
 GUN_STATS = 0x80432D64
 GUN_STATS_STRIDE = 0x29C
 GUN_STATS_COUNT = 66
 GUN_STATS_AMMO = 0x14
 GUN_STATS_AMMO2 = 0x1C
+GUN_STATS_AMOUNTS = 0x24      # 4 x s16: story primary, story alt, other primary, other alt
 # Ammo types (FUN_801a7818): +0 the most a player can carry, clip included. Under the
-# shuffle a borrowed type gets the shuffled-in gun's own maximum, and the client scales
-# every gain of it by (that maximum / the native one): a pickup fills the same share of
-# the new gun as it would have of the old one.                              [static]
+# shuffle a borrowed type gets the shuffled-in gun's own maximum, and the game scales
+# every gain of it by (that maximum / the native one) through the patched give-ammo
+# routine (AMMO_SCALE_TABLE): a pickup fills the same share of the new gun as it would
+# have of the old one.                                                       [static]
 AMMO_TYPES = 0x8042E238
 AMMO_TYPE_STRIDE = 0xE0
 AMMO_TYPE_COUNT = 44

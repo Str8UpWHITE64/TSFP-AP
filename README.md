@@ -147,7 +147,9 @@ The template yaml from the Launcher lists every option with its choices.
   are no Time Crystals, and Weapon Gating and Weapon Shuffle are off (they only affect the story).
 - **Weapon Gating**: weapons are items; a gun you have not received is taken off you.
 - **Weapon Shuffle**: each weapon is replaced by another in the story, everywhere at once, by class, or only
-  among a level's own guns. Guns a level cannot be finished without keep their identity there.
+  among a level's own guns. Guns a level cannot be finished without keep their identity there. A shuffled-in
+  gun runs on the ammo of the gun it replaces, sized to its own capacity: a pickup fills the same share of
+  the new gun as it would have of the old one.
 - **Health and Armour Checks**: every health and armour pickup in the story is a check that can hold any
   item (a handful never confirmed reachable only hold filler). The Temporal Uplink collects them even at full
   health. Time to Split's are a separate option, as

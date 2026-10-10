@@ -35,12 +35,15 @@ compare the held weapon's stats index, which moves with the shuffle, so a shuffl
 gun), the return to the menu after a mission (two sequencer sites, which also clear the menu's "carry on the
 story" state), the gun precache (a level still loads its own guns' floor models when the shuffle swaps them out),
 a camera fix (the camera update reads a zeroed stand-in while a level is torn down), and the intro skip (the
-pre-mission cutscene asks a flag the client sets from the seed whether to skip; zero, as at boot, plays it). The optional mouse hook
+pre-mission cutscene asks a flag the client sets from the seed whether to skip; zero, as at boot, plays it), and
+the shuffled-gun ammo scaling (the game's give-ammo routine scales each gain by a per-type factor the client
+writes, before the game caps it, and the pickup builder doubles a dual-wield slot's pickups by the slot's own
+gun). The optional mouse hook
 is added to every image the client writes; it does nothing without the mouse driver. The precache and camera
 code reuse the routines behind the "unlock everything" cheat code, so that cheat does nothing on a patched disc.
 
-The patches use low RAM at `0x80001800`..`0x80003000` (mouse block, camera stand-in, precache list, session
-tag, intro-skip flag). Dolphin puts its Gecko cheat handler there when a game has active cheat codes: keep them off.
+The patches use low RAM at `0x80001800`..`0x80003000` (mouse block, camera stand-in, ammo tables, precache
+list, session tag, intro-skip flag). Dolphin puts its Gecko cheat handler there when a game has active cheat codes: keep them off.
 
 ## Behaviour worth knowing
 
@@ -76,8 +79,9 @@ For the PopTracker pack the client publishes the mission and map area the player
    thrown straight from it.
 4. Weapon Shuffle: `/weapons` lists the mapping; the shuffle is applied as a story mission is picked in the
    menu and undone at the front end, so Challenges and Arcade keep native weapons. A shuffled-in gun fires
-   the ammo of the gun it replaces, so that gun's pickups and handouts keep it loaded; the client scales each
-   gain to the same share of the new gun's own maximum (half a Pistol clip's worth is half a rocket load).
+   the ammo of the gun it replaces, so that gun's pickups, drops and handouts keep it loaded; the game scales
+   each gain to the same share of the new gun's own maximum (half a Pistol clip's worth is half a rocket
+   load), before capping it. Switching guns or reloading never changes the total (magazine plus reserve).
 5. Health and armour checks: taking a pack (on foot or with the uplink) sends its check.
 6. Mouse look: on foot, turrets, tanks and security cameras; nothing moves while the game is paused.
 7. Traps: each switches its cheat on for 30 seconds in a story mission, one at a time, then off again; one

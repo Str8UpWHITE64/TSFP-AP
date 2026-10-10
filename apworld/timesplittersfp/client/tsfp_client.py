@@ -141,7 +141,6 @@ class TSFPContext(CommonContext):
             for w in spot[2]:
                 by_war[w] = loc
         self.weapons = gamestate.WeaponTables()
-        self.ammo_scaler = gamestate.AmmoScaler()
         self.weapon_remap: typing.Dict[int, int] = {}
         self.weapon_remap_by_level: typing.Dict[int, typing.Dict[int, int]] = {}
         self.weapon_pins: typing.Dict[int, typing.FrozenSet[int]] = {}
@@ -498,7 +497,6 @@ class TSFPContext(CommonContext):
                 gamestate.apply_story_gate(g, self.granted_missions())
         self.apply_weapons()
         self.apply_weapon_gating()
-        self.scale_ammo()
         gamestate.set_skip_intro(bool(self.slot_data.get("skip_intro_cutscenes")))
 
     def prefs_key(self):
@@ -671,15 +669,6 @@ class TSFPContext(CommonContext):
                                "level's own guns can freeze the game. Close Dolphin and restart this client "
                                "to re-patch it.")
 
-    def scale_ammo(self):
-        """Under the shuffle, turn ammo gains into the shuffled-in gun's share (AmmoScaler)."""
-        scale = self.weapons.ammo_scale
-        pawn = gamestate.player_pawn() if scale and gamestate.current_mission() is not None else None
-        if pawn is None:
-            self.ammo_scaler.reset()
-            return
-        self.ammo_scaler.poll(pawn, scale)
-
     def allowed_weapon_slots(self) -> typing.Set[int]:
         """Families the player may hold: a slot yields whatever the shuffle maps it to."""
         remap = self.remap_for(gamestate.current_mission())
@@ -773,16 +762,18 @@ async def game_loop(ctx: TSFPContext):
                 continue
             patched = (gamestate.story_patch_present(), gamestate.mount_patch_present(),
                        gamestate.sequencer_patch_present(), gamestate.precache_patch_present(),
-                       gamestate.camera_patch_present(), gamestate.skip_intro_patch_present())
+                       gamestate.camera_patch_present(), gamestate.skip_intro_patch_present(),
+                       gamestate.ammo_patch_present())
             if patched != ctx.patched:
                 ctx.patched = patched
                 if all(patched):
                     note("Fully patched image: every mission can be locked, Story mounts every gun, "
                                 "levels precache their own guns under the shuffle, the camera survives level "
-                                "transitions, missions return to the menu, and intros can be skipped.")
+                                "transitions, missions return to the menu, intros can be skipped, and a shuffled "
+                                "gun's ammo is scaled to it.")
                 else:
                     missing = [m for m, ok in zip(("story gate", "gun pak mount", "menu return", "gun precache",
-                                                   "camera guard", "intro skip"),
+                                                   "camera guard", "intro skip", "ammo scaling"),
                                                   patched) if not ok]
                     logger.warning("Partly stock image -- missing: %s. Close Dolphin and restart this client: it patches "
                                    "a copy of the disc for you.",
