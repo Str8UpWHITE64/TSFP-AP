@@ -121,7 +121,7 @@ CHEATS_ALLOWED = 0x806125FC
 # to a file and tagged here; a later client finds the tag and loads the file. RAM is
 # cleared when the game boots, so a fresh boot always snapshots afresh. 0x80001800 holds
 # the optional mouse block (16 bytes), 0x80001900..0x80002D00 the camera's zeroed stand-in
-# game object (CAMERA_STAND_IN below), 0x80002D00..0x80002DF7 the ammo tables
+# game object (CAMERA_STAND_IN below), 0x80002D00..0x80002DF6 the ammo tables
 # (AMMO_SCALE_TABLE, AMMO_DUAL_TABLE) and 0x80002F00 the precache list; the rest of
 # 0x80001800..0x80003000 is unused.
 SESSION_TAG_ADDR = 0x80002FF0          # 'TSFS' + u32 tag
@@ -156,7 +156,7 @@ CAMERA_STAND_IN = 0x80001900           # ..0x80002D00, must stay zero
 # gun's dual-wield factor (1 or 2), used in place of the live row's; zero keeps the live
 # one. Both are zero outside a shuffled story mission.
 AMMO_SCALE_TABLE = 0x80002D00          # AMMO_TYPE_COUNT words, ..0x80002DB0
-AMMO_DUAL_TABLE = 0x80002DB0           # GUN_COUNT bytes, ..0x80002DF7
+AMMO_DUAL_TABLE = 0x80002DB0           # GUN_COUNT bytes, ..0x80002DF6
 AMMO_GIVE_HOOK_ADDR = 0x801A9AA8
 AMMO_GIVE_HOOK_APPLIED = 0x48016A21    # bl <cave at 0x801C04C8>
 AMMO_DUAL_HOOK_ADDR = 0x80038984
@@ -230,7 +230,9 @@ OBJ_POOL_ENTRIES = 48
 # apworld's weapon slot is the family's base row.                            [live]
 GUN_TABLE = 0x8043E22C
 GUN_STRIDE = 0x3C
-GUN_COUNT = 71
+# 70 rows: the game loops 0..0x45. The model/HUD table (GUN_UI_TABLE) starts right after,
+# so a 71st row would read its first record as a gun on the Pistol's stats.
+GUN_COUNT = 70
 GUN_FLAGS = 0x00
 # Thrown (0x10: grenades) and placed (0x200: mines, TNT, the Brick) weapons. They are
 # used straight from their ammo: a family the gating took away can still be thrown while
