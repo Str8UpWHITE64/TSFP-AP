@@ -659,7 +659,8 @@ class TSFPContext(CommonContext):
                 note("Weapon tables restored to native (not in Story).")
             return
         remap = self.remap_for(mission)
-        key = ("story", mission if (self.weapon_remap_by_level or mission in self.weapon_pins) else "global")
+        # per mission even with one global remap: the precache list follows the level's guns
+        key = ("story", mission)
         if self.weapons.apply(remap, key, data.LEVEL_WEAPON_SLOTS.get(data.STORY[mission], ())):
             changed = [f"{data.WEAPONS[s]} -> {data.WEAPONS[t]}" for s, t in sorted(remap.items())
                        if s != t and s in data.WEAPONS and t in data.WEAPONS]

@@ -140,6 +140,20 @@ SESSION_TAG_MAGIC = b"TSFS"
 PRECACHE_BLOCK_ADDR = 0x80002F00       # 'TSPL', u32 count, count x u32 object type
 PRECACHE_MAGIC = b"TSPL"
 PRECACHE_MAX_TYPES = 58                # the cave ignores a longer list
+# The level precache (FUN_801a7c58, per gun stats record) loads projectile models by the
+# stats' ammo types (+0x14/+0x1C): 0x13..0x15 the rockets, 0x17 the time grenade (0x16, the
+# grenade, is always loaded in Story). The shuffle gives a shuffled-in gun's stats the
+# slot's native ammo, so the precache skipped them, yet the gun still fires its own
+# projectile: in U-Genix, the Rocket Launcher in the SBP500's place spawned ROCKET1, the
+# lazy load came back NULL and the pager trashed low RAM. The client lists the types for
+# each level gun's real ammo.                                                   [live]
+PROJECTILE_MODELS = {
+    0x13: (0x743, 0x745, 0x744),        # ROCKET1, MISSILE, HEATSEEKER_ROCKET
+    0x14: (0x743, 0x745, 0x744),
+    0x15: (0x743, 0x745, 0x744),
+    0x16: (0x746,),                     # GRENADE_OB
+    0x17: (0x74B,),                     # TIMEGRENADE_OB
+}
 PRECACHE_HOOK_ADDR = 0x801A820C
 PRECACHE_HOOK_APPLIED = 0x480183E5     # bl <cave at 0x801C05F0>
 # The camera update reads a zeroed stand-in when there is no game object (patcher
