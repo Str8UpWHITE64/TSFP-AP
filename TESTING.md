@@ -82,6 +82,8 @@ For the PopTracker pack the client publishes the mission and map area the player
    the ammo of the gun it replaces, so that gun's pickups, drops and handouts keep it loaded; the game scales
    each gain to the same share of the new gun's own maximum (half a Pistol clip's worth is half a rocket
    load), before capping it. Switching guns or reloading never changes the total (magazine plus reserve).
+   The HUD counter shows the shuffled-in gun's own ammo icon (an SBP500 in the Injector's place shows
+   bullets, not darts); ammo boxes on the floor still look like the replaced gun's.
 5. Health and armour checks: taking a pack (on foot or with the uplink) sends its check.
 6. Mouse look: on foot, turrets, tanks and security cameras; nothing moves while the game is paused.
 7. Traps: each switches its cheat on for 30 seconds in a story mission, one at a time, then off again; one

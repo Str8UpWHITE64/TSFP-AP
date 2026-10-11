@@ -592,6 +592,10 @@ def clear_ungranted_weapons(pawn: int, allowed_slots: typing.Set[int]):
 
 
 # --- the weapon shuffle: identity swaps on the gun tables ---------------------------
+
+HUD_SIZE = mm.AMMO_TYPE_HUD_END - mm.AMMO_TYPE_HUD     # an ammo type's HUD look
+
+
 class WeaponTables:
     """Make gun X *be* gun Y by copying Y's rows over X's in the three per-gun tables.
 
@@ -623,7 +627,8 @@ class WeaponTables:
 
     def _sizes(self):
         return (mm.GUN_COUNT * mm.GUN_STRIDE, mm.GUN_COUNT * mm.GUN_UI_STRIDE, mm.GUN_COUNT * mm.GUN_ICON_STRIDE,
-                mm.GUN_STATS_COUNT * 8, mm.AMMO_TYPE_COUNT * 4, mm.GUN_STATS_COUNT * 8)
+                mm.GUN_STATS_COUNT * 8, mm.AMMO_TYPE_COUNT * 4, mm.GUN_STATS_COUNT * 8,
+                mm.AMMO_TYPE_COUNT * HUD_SIZE)
 
     def _session_tag(self) -> typing.Optional[int]:
         raw = dme.read_bytes(mm.SESSION_TAG_ADDR, 8)
@@ -638,6 +643,14 @@ class WeaponTables:
         except OSError:
             return False
         sizes = self._sizes()
+        old = len(blob) == sum(sizes[:-1])
+        if old:
+            # saved by an older client, which never touched the ammo HUD looks: the live
+            # ones are still the originals
+            try:
+                blob += self._read_hud()
+            except Exception:
+                return False
         if len(blob) != sum(sizes):
             return False
         parts, at = [], 0
@@ -645,7 +658,14 @@ class WeaponTables:
             parts.append(blob[at:at + n])
             at += n
         self.pristine = tuple(parts)
+        if old:
+            self._save(tag)
         return True
+
+    @staticmethod
+    def _read_hud() -> bytes:
+        return b"".join(dme.read_bytes(mm.AMMO_TYPES + t * mm.AMMO_TYPE_STRIDE + mm.AMMO_TYPE_HUD, HUD_SIZE)
+                        for t in range(mm.AMMO_TYPE_COUNT))
 
     def _save(self, tag: int) -> bool:
         try:
@@ -666,7 +686,8 @@ class WeaponTables:
                 b"".join(dme.read_bytes(mm.AMMO_TYPES + t * mm.AMMO_TYPE_STRIDE + mm.AMMO_TYPE_MAX, 4)
                          for t in range(mm.AMMO_TYPE_COUNT)),
                 b"".join(dme.read_bytes(mm.GUN_STATS + i * mm.GUN_STATS_STRIDE + mm.GUN_STATS_AMOUNTS, 8)
-                         for i in range(mm.GUN_STATS_COUNT)))
+                         for i in range(mm.GUN_STATS_COUNT)),
+                self._read_hud())
 
     def snapshot(self) -> bool:
         if self.pristine is not None:
@@ -701,7 +722,7 @@ class WeaponTables:
         return True
 
     def _swapped(self, remap: dict):
-        gun, ui, icon, ammo, maxes, amounts = (bytearray(b) for b in self.pristine)
+        gun, ui, icon, ammo, maxes, amounts, hud = (bytearray(b) for b in self.pristine)
         pg, pu, pi = self.pristine[:3]
         for x, y in remap.items():
             if x == y or x not in data.WEAPON_ROWS or y not in data.WEAPON_ROWS:
@@ -718,25 +739,31 @@ class WeaponTables:
                                                + pu[ux + mm.GUN_UI_CALLBACK:ux + mm.GUN_UI_STRIDE])
                 ix, iy = row_x * mm.GUN_ICON_STRIDE, row_y * mm.GUN_ICON_STRIDE
                 icon[ix:ix + mm.GUN_ICON_STRIDE] = pi[iy:iy + mm.GUN_ICON_STRIDE]
-        scale = self._borrow_ammo(gun, ammo, maxes, amounts, remap)
-        return (bytes(gun), bytes(ui), bytes(icon), bytes(ammo), bytes(maxes), bytes(amounts)), scale
+        scale = self._borrow_ammo(gun, ammo, maxes, amounts, hud, remap)
+        return (bytes(gun), bytes(ui), bytes(icon), bytes(ammo), bytes(maxes), bytes(amounts), bytes(hud)), scale
 
     def _borrow_ammo(self, gun: bytearray, ammo: bytearray, maxes: bytearray, amounts: bytearray,
-                     remap: dict) -> typing.Dict[int, typing.Tuple[int, int]]:
+                     hud: bytearray, remap: dict) -> typing.Dict[int, typing.Tuple[int, int]]:
         """Give the stats each shuffled slot borrows that slot's native ammo types and default
         pickup amounts (memmap GUN_STATS), unless a second weapon fires from the same stats (a
-        level pin), and give each borrowed type the shuffled-in gun's maximum (memmap
-        AMMO_TYPES). Returns {ammo type: (new max, native max)}: the patched game scales every
-        gain of that type by the ratio (memmap AMMO_SCALE_TABLE)."""
-        pg, pa, pm, pd = self.pristine[0], self.pristine[3], self.pristine[4], self.pristine[5]
+        level pin), and give each borrowed type the shuffled-in gun's maximum and HUD look
+        (memmap AMMO_TYPES). Returns {ammo type: (new max, native max)}: the patched game
+        scales every gain of that type by the ratio (memmap AMMO_SCALE_TABLE)."""
+        pg, pa, pm, pd, ph = (self.pristine[k] for k in (0, 3, 4, 5, 6))
         scale: typing.Dict[int, typing.Tuple[int, int]] = {}
+        looks: typing.Set[int] = set()
 
         def most(table, t):
             return int.from_bytes(table[t * 4:t * 4 + 4], "big") if 0 < t < mm.AMMO_TYPE_COUNT else 0
 
         def borrow(t_native: bytes, t_gun: bytes):
             tn, tg = int.from_bytes(t_native, "big"), int.from_bytes(t_gun, "big")
-            if tn in scale or tn == tg or not most(pm, tn) or not most(pm, tg):
+            if tn in looks or tn == tg or not 0 < tn < mm.AMMO_TYPE_COUNT or not 0 < tg < mm.AMMO_TYPE_COUNT:
+                return
+            # the first gun to borrow a type sets its look, as for the maximum below
+            looks.add(tn)
+            hud[tn * HUD_SIZE:(tn + 1) * HUD_SIZE] = ph[tg * HUD_SIZE:(tg + 1) * HUD_SIZE]
+            if tn in scale or not most(pm, tn) or not most(pm, tg):
                 return
             maxes[tn * 4:tn * 4 + 4] = pm[tg * 4:tg * 4 + 4]
             scale[tn] = (most(pm, tg), most(pm, tn))
@@ -829,7 +856,7 @@ class WeaponTables:
         repeated polls do not rewrite it. True when something was written."""
         if self.pristine is None or self.applied == key:
             return False
-        (gun, ui, icon, ammo, maxes, amounts), scale = self._swapped(remap) if remap else (self.pristine, {})
+        (gun, ui, icon, ammo, maxes, amounts, hud), scale = self._swapped(remap) if remap else (self.pristine, {})
         types = []
         if remap:
             # projectiles first: a missing one crashes the game the moment it is fired
@@ -856,6 +883,8 @@ class WeaponTables:
             dme.write_bytes(base + mm.GUN_STATS_AMOUNTS, amounts[i * 8:i * 8 + 8])
         for t in range(mm.AMMO_TYPE_COUNT):
             dme.write_bytes(mm.AMMO_TYPES + t * mm.AMMO_TYPE_STRIDE + mm.AMMO_TYPE_MAX, maxes[t * 4:t * 4 + 4])
+            dme.write_bytes(mm.AMMO_TYPES + t * mm.AMMO_TYPE_STRIDE + mm.AMMO_TYPE_HUD,
+                            hud[t * HUD_SIZE:(t + 1) * HUD_SIZE])
         self.applied = key
         self.ammo_scale = scale
         self.precached = types

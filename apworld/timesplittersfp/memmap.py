@@ -287,6 +287,14 @@ AMMO_TYPES = 0x8042E238
 AMMO_TYPE_STRIDE = 0xE0
 AMMO_TYPE_COUNT = 44
 AMMO_TYPE_MAX = 0x00
+# +0x04..+0x8C is the type's HUD look: icon texture id at +4, then up to four 0x20-byte
+# counter descriptors (FUN_801104d4 draws the held stats' ammo types with them, and the
+# level precache FUN_801a7c58 loads their textures). A borrowed type gets the shuffled-in
+# gun's own look, so the HUD shows that gun's ammo. +0x8C..+0xE0 (pickup name and box
+# model, all precached by FUN_801a8290) stays the native one: it is what lies on the
+# floor.                                                                     [static]
+AMMO_TYPE_HUD = 0x04
+AMMO_TYPE_HUD_END = 0x8C
 # Weapon-wheel icon table, parallel.                                          [live]
 GUN_ICON_TABLE = 0x8043D99C
 GUN_ICON_STRIDE = 0x14
