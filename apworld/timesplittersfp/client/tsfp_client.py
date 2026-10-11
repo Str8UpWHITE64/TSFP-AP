@@ -695,14 +695,15 @@ class TSFPContext(CommonContext):
             return
         self.no_pawn_polls = 0
         self.warned_no_pawn = False
-        cleared, switched = gamestate.clear_ungranted_weapons(pawn, self.allowed_weapon_slots())
+        cleared, switched = gamestate.clear_ungranted_weapons(pawn, self.allowed_weapon_slots(),
+                                                              self.weapons.row_family)
         if cleared:
-            names = sorted({self.describe_slot(gamestate.ROW_FAMILY[r]) for r in cleared})
+            names = sorted({self.describe_slot(self.weapons.row_family.get(r, r)) for r in cleared})
             note("Weapon gating removed: %s", ", ".join(names))
         if switched:
             note("Weapon gating: was holding %s, switched to %s",
-                        self.describe_slot(gamestate.ROW_FAMILY.get(switched[0], switched[0])),
-                        self.describe_slot(gamestate.ROW_FAMILY.get(switched[1], switched[1])))
+                        self.describe_slot(self.weapons.row_family.get(switched[0], switched[0])),
+                        self.describe_slot(self.weapons.row_family.get(switched[1], switched[1])))
 
     def describe_slot(self, slot):
         """A weapon as the player sees it: under a shuffle, the weapon that slot has become."""

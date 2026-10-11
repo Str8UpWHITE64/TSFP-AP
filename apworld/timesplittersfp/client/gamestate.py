@@ -543,8 +543,12 @@ def _row_ammo_types(gun: bytes, row: int) -> typing.Set[int]:
     return out
 
 
-def clear_ungranted_weapons(pawn: int, allowed_slots: typing.Set[int]):
+def clear_ungranted_weapons(pawn: int, allowed_slots: typing.Set[int],
+                            row_family: typing.Optional[typing.Dict[int, int]] = None):
     """Take away every weapon family the player has not been granted.
+
+    `row_family` maps each row to the slot it belongs to (WeaponTables.row_family: the
+    shuffle lends spare rows to slots for their new gun's alt mode).
 
     Re-applied continuously: the game hands weapons out on pickup and by script.
     Rows outside data.WEAPON_ROWS (unarmed, turrets) are never touched. Thrown and
@@ -556,7 +560,8 @@ def clear_ungranted_weapons(pawn: int, allowed_slots: typing.Set[int]):
     gun = dme.read_bytes(mm.GUN_TABLE, mm.GUN_COUNT * mm.GUN_STRIDE)
     keep = set()
     spent = {}                                  # ammo type -> a row of an ungranted family
-    for row, slot in ROW_FAMILY.items():
+    row_family = row_family or ROW_FAMILY
+    for row, slot in row_family.items():
         types = _row_ammo_types(gun, row)
         if slot in allowed_slots or slot in data.WEAPON_BASELINE:
             keep |= types
@@ -567,7 +572,7 @@ def clear_ungranted_weapons(pawn: int, allowed_slots: typing.Set[int]):
         if t not in keep and u16(pawn + mm.PAWN_AMMO + t * 2):
             dme.write_bytes(pawn + mm.PAWN_AMMO + t * 2, bytes(2))
             cleared.append(row)
-    for row, slot in ROW_FAMILY.items():
+    for row, slot in row_family.items():
         if slot in allowed_slots or slot in data.WEAPON_BASELINE:
             continue
         if owned[row]:
@@ -578,7 +583,7 @@ def clear_ungranted_weapons(pawn: int, allowed_slots: typing.Set[int]):
         held = u32(pawn + mm.PAWN_HELD)
     except Exception:
         held = 0
-    held_slot = ROW_FAMILY.get(held)
+    held_slot = row_family.get(held)
     if held_slot is not None and held_slot not in allowed_slots and held_slot not in data.WEAPON_BASELINE:
         fallback = mm.UNARMED_SLOT
         for slot in sorted(allowed_slots, reverse=True):
@@ -594,6 +599,15 @@ def clear_ungranted_weapons(pawn: int, allowed_slots: typing.Set[int]):
 # --- the weapon shuffle: identity swaps on the gun tables ---------------------------
 
 HUD_SIZE = mm.AMMO_TYPE_HUD_END - mm.AMMO_TYPE_HUD     # an ammo type's HUD look
+
+# Rows of guns no story level has (Monkey Gun, the mines). A gun's alt mode (the LX-18's
+# silencer, the Rocket Launcher's guided rockets...) is a second row of its family, picked
+# with the weapon-mode scroll. When the slot a gun is shuffled into has no alt row, one of
+# these rows takes the alt row and joins the slot's family for that level.
+_STORY_SLOTS = frozenset().union(*data.LEVEL_WEAPON_SLOTS.values())
+SPARE_ROWS = tuple(r for s in sorted(data.WEAPON_ROWS)
+                   if s not in _STORY_SLOTS and s not in data.WEAPON_BASELINE and s not in data.WEAPON_NOSHUFFLE
+                   for r in data.WEAPON_ROWS[s])
 
 
 class WeaponTables:
@@ -621,6 +635,7 @@ class WeaponTables:
         self.unrecoverable = False
         self.precached: typing.List[int] = []   # object types in the precache list
         self.ammo_scale: typing.Dict[int, typing.Tuple[int, int]] = {}  # borrowed type -> (new max, native max)
+        self.row_family: typing.Dict[int, int] = dict(ROW_FAMILY)       # row -> the slot it belongs to now
 
     def _cache_file(self, tag: int) -> str:
         return os.path.join(self.CACHE_DIR, "weapon_tables_%08x.bin" % tag)
@@ -721,9 +736,20 @@ class WeaponTables:
             dme.write_bytes(mm.SESSION_TAG_ADDR, mm.SESSION_TAG_MAGIC + tag.to_bytes(4, "big"))
         return True
 
-    def _swapped(self, remap: dict):
+    def _swapped(self, remap: dict, level_slots=()):
         gun, ui, icon, ammo, maxes, amounts, hud = (bytearray(b) for b in self.pristine)
         pg, pu, pi = self.pristine[:3]
+        row_family = dict(ROW_FAMILY)
+        homeless = []                           # (slot, alt row of the gun shuffled into it)
+
+        def copy_row(row_x, row_y, gun_entry):
+            gun[row_x * mm.GUN_STRIDE:(row_x + 1) * mm.GUN_STRIDE] = gun_entry
+            ux, uy = row_x * mm.GUN_UI_STRIDE, row_y * mm.GUN_UI_STRIDE
+            ui[ux:ux + mm.GUN_UI_STRIDE] = (pu[uy:uy + mm.GUN_UI_CALLBACK]
+                                           + pu[ux + mm.GUN_UI_CALLBACK:ux + mm.GUN_UI_STRIDE])
+            ix, iy = row_x * mm.GUN_ICON_STRIDE, row_y * mm.GUN_ICON_STRIDE
+            icon[ix:ix + mm.GUN_ICON_STRIDE] = pi[iy:iy + mm.GUN_ICON_STRIDE]
+
         for x, y in remap.items():
             if x == y or x not in data.WEAPON_ROWS or y not in data.WEAPON_ROWS:
                 continue
@@ -731,19 +757,37 @@ class WeaponTables:
             for role, row_x in rx.items():
                 row_y = ry.get(role, ry.get((False, False)))
                 gx, gy = row_x * mm.GUN_STRIDE, row_y * mm.GUN_STRIDE
-                entry = (pg[gy:gy + mm.GUN_REQ_OFF] + pg[gx + mm.GUN_REQ_OFF:gx + mm.GUN_REQ_END]
-                         + pg[gy + mm.GUN_REQ_END:gy + mm.GUN_FAMILY] + pg[gx + mm.GUN_FAMILY:gx + mm.GUN_STRIDE])
-                gun[gx:gx + mm.GUN_STRIDE] = entry
-                ux, uy = row_x * mm.GUN_UI_STRIDE, row_y * mm.GUN_UI_STRIDE
-                ui[ux:ux + mm.GUN_UI_STRIDE] = (pu[uy:uy + mm.GUN_UI_CALLBACK]
-                                               + pu[ux + mm.GUN_UI_CALLBACK:ux + mm.GUN_UI_STRIDE])
-                ix, iy = row_x * mm.GUN_ICON_STRIDE, row_y * mm.GUN_ICON_STRIDE
-                icon[ix:ix + mm.GUN_ICON_STRIDE] = pi[iy:iy + mm.GUN_ICON_STRIDE]
-        scale = self._borrow_ammo(gun, ammo, maxes, amounts, hud, remap)
-        return (bytes(gun), bytes(ui), bytes(icon), bytes(ammo), bytes(maxes), bytes(amounts), bytes(hud)), scale
+                entry = bytearray(pg[gy:gy + mm.GUN_REQ_OFF] + pg[gx + mm.GUN_REQ_OFF:gx + mm.GUN_REQ_END]
+                                  + pg[gy + mm.GUN_REQ_END:gy + mm.GUN_FAMILY]
+                                  + pg[gx + mm.GUN_FAMILY:gx + mm.GUN_STRIDE])
+                if role not in ry:
+                    # a role the new gun lacks keeps a copy of its base row (a pickup or handout of the
+                    # row still gives the gun), but the weapon-mode scroll must not offer it as a mode,
+                    # and a dual row falls back past it to the real base row
+                    flags = int.from_bytes(entry[:4], "big")
+                    flags = (flags | mm.GUN_FLAGS_NOT_PLAYER) & ~mm.GUN_FLAGS_DUAL_FALLBACK
+                    entry[:4] = flags.to_bytes(4, "big")
+                copy_row(row_x, row_y, bytes(entry))
+            # the new gun's alt mode, where the slot has no alt row to hold it. Only the one-handed
+            # one: a dual row is only ever given by the slot's own dual pickups.
+            alt = ry.get((False, True))
+            if alt is not None and (False, True) not in rx and x in level_slots:
+                homeless.append((x, alt))
+        spare = [r for r in SPARE_ROWS if ROW_FAMILY[r] not in level_slots]
+        for x, row_y in homeless:
+            if not spare:
+                break
+            r = spare.pop(0)
+            gx, gy = data.WEAPON_ROWS[x][0] * mm.GUN_STRIDE, row_y * mm.GUN_STRIDE
+            copy_row(r, row_y, pg[gy:gy + mm.GUN_FAMILY] + pg[gx + mm.GUN_FAMILY:gx + mm.GUN_STRIDE])
+            row_family[r] = x
+        scale = self._borrow_ammo(gun, ammo, maxes, amounts, hud, remap, row_family)
+        return ((bytes(gun), bytes(ui), bytes(icon), bytes(ammo), bytes(maxes), bytes(amounts), bytes(hud)),
+                scale, row_family)
 
     def _borrow_ammo(self, gun: bytearray, ammo: bytearray, maxes: bytearray, amounts: bytearray,
-                     hud: bytearray, remap: dict) -> typing.Dict[int, typing.Tuple[int, int]]:
+                     hud: bytearray, remap: dict, row_family: typing.Dict[int, int]
+                     ) -> typing.Dict[int, typing.Tuple[int, int]]:
         """Give the stats each shuffled slot borrows that slot's native ammo types and default
         pickup amounts (memmap GUN_STATS), unless a second weapon fires from the same stats (a
         level pin), and give each borrowed type the shuffled-in gun's maximum and HUD look
@@ -777,11 +821,13 @@ class WeaponTables:
             for off in (mm.GUN_LEFT_STATS, mm.GUN_RIGHT_STATS):
                 i = field(gun, row, off)
                 if i is not None:
-                    users.setdefault(i, set()).add(ROW_FAMILY.get(row, -1 - row))
+                    users.setdefault(i, set()).add(row_family.get(row, -1 - row))
         for x, y in remap.items():
             if x == y or x not in data.WEAPON_ROWS or y not in data.WEAPON_ROWS:
                 continue
             for row in data.WEAPON_ROWS[x]:
+                if row_family[row] != x:        # lent out to another slot's alt mode
+                    continue
                 native = field(pg, row, mm.GUN_RIGHT_STATS)
                 if native is None:
                     continue
@@ -856,7 +902,8 @@ class WeaponTables:
         repeated polls do not rewrite it. True when something was written."""
         if self.pristine is None or self.applied == key:
             return False
-        (gun, ui, icon, ammo, maxes, amounts, hud), scale = self._swapped(remap) if remap else (self.pristine, {})
+        (gun, ui, icon, ammo, maxes, amounts, hud), scale, row_family = (
+            self._swapped(remap, level_slots) if remap else (self.pristine, {}, dict(ROW_FAMILY)))
         types = []
         if remap:
             # projectiles first: a missing one crashes the game the moment it is fired
@@ -888,6 +935,7 @@ class WeaponTables:
         self.applied = key
         self.ammo_scale = scale
         self.precached = types
+        self.row_family = row_family
         return True
 
     def restore(self) -> bool:

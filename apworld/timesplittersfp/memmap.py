@@ -252,6 +252,13 @@ GUN_FLAGS = 0x00
 # used straight from their ammo: a family the gating took away can still be thrown while
 # its ammo lasts, so gating empties that too.                                 [live]
 GUN_FLAGS_SPENT_FROM_AMMO = 0x10 | 0x200
+# The weapon-mode scroll (d-pad up/down, FUN_801aad8c / FUN_801aac98) and the HUD arrows
+# that announce it go to the next row of the held gun's family that the player can use
+# (FUN_801a9fa4), and that check turns down any row with 0x2 for a player (the game sets
+# it on NPC-only rows). 0x80 marks the single-hand row a dual row falls back to when the
+# left hand is busy (FUN_801a95b8 walks back to it).                         [static]
+GUN_FLAGS_NOT_PLAYER = 0x02
+GUN_FLAGS_DUAL_FALLBACK = 0x80
 GUN_LEFT_STATS = 0x0C
 GUN_RIGHT_STATS = 0x10
 GUN_ANIM_PATH = 0x18
