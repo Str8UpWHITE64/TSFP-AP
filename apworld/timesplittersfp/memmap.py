@@ -13,6 +13,11 @@ Confirmation status per entry:
 """
 
 GAME_ID = "G3FE69"
+# The GameCube disc magic at +0x1C of the disc header, which boot copies to 0x80000000 together
+# with the game id (one 0x20-byte read) and nothing writes again. FP's pager fault loop (any NULL
+# dereference) fills RAM with stack frames down to 0x80000000: one crash dump lost the id but kept
+# the magic, another kept the id and lost the magic. Both have to be there for a live game. [live]
+DISC_MAGIC = bytes.fromhex("C2339F3D")
 
 # --- profile array -----------------------------------------------------------
 # Static, in .bss: 8 slots. Slot 0 is player 1's profile; at boot the game fills

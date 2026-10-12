@@ -53,9 +53,11 @@ def hook() -> bool:
     if not dme.is_hooked():
         return False
     try:
-        return dme.read_bytes(0x80000000, 6).decode("latin-1") == mm.GAME_ID
+        header = dme.read_bytes(0x80000000, 0x20)
     except Exception:
         return False
+    # a crash can leave the id while the rest of the disc header is overwritten (see memmap)
+    return header[:6].decode("latin-1") == mm.GAME_ID and header[0x1C:0x20] == mm.DISC_MAGIC
 
 
 # --- profile ---------------------------------------------------------------------
