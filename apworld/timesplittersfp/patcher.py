@@ -223,7 +223,8 @@ PRECACHE_CAVE = (
     [0x7C0802A6, 0x9421FFF0, 0x90010014, 0x4BFE7975, 0x3FE08000, 0x63FF2F00, 0x801F0000,
      0x3C605453, 0x6063504C, 0x7C001800, 0x40820030, 0x83DF0004, 0x281E003A, 0x41810024,
      0x3BFF0004, 0x2C1E0000, 0x41820018, 0x847F0004, 0x63840000, 0x4BFE7449, 0x3BDEFFFF,
-     0x4BFFFFE8, 0x80010014, 0x38210010, 0x7C0803A6, 0x4E800020, NOP, NOP],
+     0x4BFFFFE8, 0x80010014, 0x38210010, 0x7C0803A6, 0x4E800020,
+     0x3B803FFF, 0x4E800020],                # AMMO_GIVE_CAVE's clamp: li r28,0x3fff ; blr
     "weapon shuffle: cave that precaches the client's list of object types",
 )
 PRECACHE_HOOK = (
@@ -384,14 +385,19 @@ WEAPON_IDENTITY = [(ram, original, patched, "weapons: hard-coded weapon check fo
 # cheat callback that CHEAT_CALLBACK makes dead; the dual cave in the free words of
 # FUN_801c0a88's dead tail between the intro-skip cave and the camera guard. Every word was
 # disassembled back with Ghidra and both caves were executed against a model of the tables.
+#
+# A scaled gain is clamped to 0x3FFF (the last two words sit in the free tail of PRECACHE_CAVE):
+# the game adds it into an s16 before it caps, and guards are handed 10000 rounds; scaled by
+# 200/60 that wrapped to -32202, the guard had no ammo and came at the player with his fists.
+# Every cap is far below 0x3FFF, so a clamped gain still fills the player or guard to the cap.
 AMMO_GIVE_CAVE = (
     0x801C04C8,
     [0x9421FFF0, 0x7C0802A6, 0x3CA0805C, 0x7C641B78, 0x90010014, 0x38652668, 0x38A0003F, 0x481CAFE9,
      0x3C60805C, 0x38000078, 0x38632668, 0x38800000, 0x9883003F, 0x900DACB8, 0x80010014, 0x7C0803A6,
      0x38210010, 0x4E800020],
     [0x7CBC2B78, 0x2804002C, 0x4C800020, 0x2C050000, 0x4C810020, 0x5486103A, 0x3CC68000, 0x80C62D00,
-     0x54C7043F, 0x4D820020, 0x54C6843E, 0x7CA531D6, 0x7CA53A14, 0x38A5FFFF, 0x7F853BD6, 0x4E800020,
-     NOP, NOP],
+     0x54C7043F, 0x4D820020, 0x54C6843E, 0x7CA531D6, 0x7CA53A14, 0x38A5FFFF, 0x7F853BD6, 0x2C1C3FFF,
+     0x4C810020, 0x4800014C],                # ... cmpwi r28,0x3fff ; blelr ; b <clamp in PRECACHE_CAVE>
     "weapon shuffle: cave that scales an ammo gain by the client's per-type factor",
 )
 AMMO_GIVE_HOOK = (
@@ -514,6 +520,14 @@ def words_at(image, disc, count):
 # original). REVERT lists sites an older version patched that are no longer patched at
 # all; they are put back to the original first.
 LEGACY = {
+    0x801C04C8: [[0x7CBC2B78, 0x2804002C, 0x4C800020, 0x2C050000, 0x4C810020, 0x5486103A,  # ammo scaling, v1
+                  0x3CC68000, 0x80C62D00, 0x54C7043F, 0x4D820020, 0x54C6843E, 0x7CA531D6,  # (no clamp)
+                  0x7CA53A14, 0x38A5FFFF, 0x7F853BD6, 0x4E800020, NOP, NOP]],
+    0x801C05F0: [[0x7C0802A6, 0x9421FFF0, 0x90010014, 0x4BFE7975, 0x3FE08000, 0x63FF2F00,  # precache cave, v1
+                  0x801F0000, 0x3C605453, 0x6063504C, 0x7C001800, 0x40820030, 0x83DF0004,  # (free tail)
+                  0x281E003A, 0x41810024, 0x3BFF0004, 0x2C1E0000, 0x41820018, 0x847F0004,
+                  0x63840000, 0x4BFE7449, 0x3BDEFFFF, 0x4BFFFFE8, 0x80010014, 0x38210010,
+                  0x7C0803A6, 0x4E800020, NOP, NOP]],
     0x8003209C: [[0x38000065, 0x981E004C, NOP]],                       # return to menu, v1
     0x80032250: [[0x38000065, 0x981E004C, NOP, NOP]],                  # return to menu, v1
     0x801C0B60: [[0x39610020, 0x800DA434, 0x2C000000, 0x4D820020,      # camera guard, v1
