@@ -421,6 +421,30 @@ AMMO_DUAL_HOOK = (
     "weapon shuffle: a placed pickup's dual-wield doubling runs through the cave",
 )
 
+# --- weapons: a dead guard's gun looks like the gun ----------------------------------
+# The pickup builder FUN_80093688 shows any pickup made during play whose ammo is 0x20 or
+# 0x21 as a HARPOON or a DART, whatever it is: that is how a spent harpoon or dart stuck in
+# a wall becomes ammo you can pick up (FUN_800c0250), and the Harpoon Gun or Injector a
+# guard drops looks the same. The shuffle lends the slot's ammo to the gun in its place, so
+# a Shotgun in the Harpoon Gun's slot dropped as a harpoon. The choice is rewritten in place
+# (no cave): a dropped gun (type 2) keeps the harpoon/dart look only while its drop model
+# (model table +4, which the shuffle swaps) is still the Harpoon Gun's 0x730 / the
+# Injector's 0x72D; anything else shows its own drop model, which the level's gun precache
+# loads from the same swapped table. Unshuffled, nothing changes. r3 is still the model
+# table record here, r0/r4/r5 are free (Ghidra-checked; simulated for every case).
+DROP_MODEL = (
+    0x80093770,
+    [0x4182002C, 0x2C1E0020, 0x40820024, 0x7FA4EB78, 0x7EC5B378, 0x38600754, 0x38C00000, 0x38E00000,
+     0x4BFDF5E1, 0x7C721B78, 0x48000050, 0x2C130000, 0x4182002C, 0x2C1E0021, 0x40820024, 0x7FA4EB78,
+     0x7EC5B378, 0x38600753, 0x38C00000, 0x38E00000, 0x4BFDF5B1, 0x7C721B78, 0x48000020, 0x4801CF39,
+     0x7FA4EB78, 0x7EC5B378, 0x38C00000, 0x38E00000, 0x4BFDF591, 0x7C721B78],
+    [0x41820040, 0x2C1E0020, 0x38800754, 0x38000730, 0x41820014, 0x2C1E0021, 0x38800753, 0x3800072D,
+     0x40820020, 0x2C1A0002, 0x40820010, 0x80A30004, 0x7C050000, 0x4082000C, 0x7C832378, 0x48000008,
+     0x4801CF55, 0x7FA4EB78, 0x7EC5B378, 0x38C00000, 0x38E00000, 0x4BFDF5AD, 0x7C721B78, 0x4800001C,
+     NOP, NOP, NOP, NOP, NOP, NOP],
+    "weapon shuffle: a dropped gun shows its own model, not the harpoon or dart its ammo picks",
+)
+
 PATCHES = [
     STORY_GATE,
     PAK_MOUNT_TEST,
@@ -437,6 +461,7 @@ PATCHES = [
     AMMO_GIVE_HOOK,
     AMMO_DUAL_CAVE,
     AMMO_DUAL_HOOK,
+    DROP_MODEL,
 ]
 
 

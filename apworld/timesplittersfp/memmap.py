@@ -165,6 +165,8 @@ PROJECTILE_MODELS = {
 # shuffle lends the ammo type to whatever gun takes the slot: a Shotgun in the Harpoon Gun's
 # place in You Take the High Road dropped a HARPOON that was never loaded, and the game crashed
 # like U-Genix. Keyed by the ammo the level's stats fire after the shuffle.          [live]
+# patcher DROP_MODEL now shows such a gun with its own model; the list stays for images
+# patched before it.
 DROP_MODELS_BY_AMMO = {
     0x20: (0x754,),                     # HARPOON
     0x21: (0x753,),                     # DART
