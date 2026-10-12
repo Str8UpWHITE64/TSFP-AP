@@ -351,6 +351,19 @@ class TSFPContext(CommonContext):
         await self.send_msgs([{"cmd": "Set", "key": self.profile_key(), "default": "", "want_reply": False,
                                "operations": [{"operation": "replace", "value": name}]}])
 
+    def is_returning_profile(self, gamedata: int, name: str) -> bool:
+        """An untagged profile with progress that is plainly this seed's own: its name is the one
+        registered for this seed, and every clear and medal on it is already a checked location on
+        the server (a different profile that merely shares the name would have to hold nothing
+        the server has not seen)."""
+        if not name or self.stored_data.get(self.profile_key()) != name:
+            return False
+        known = set(self.checked_locations)
+        if not known:
+            return False
+        mine = gamestate.trophy_checks(gamedata) | gamestate.story_checks(gamedata)
+        return bool(mine) and mine <= known
+
     async def check_profile(self, profile: int) -> bool:
         """True when the profile loaded is this seed's (claiming a fresh one)."""
         tag = self.seed_tag()
@@ -376,6 +389,11 @@ class TSFPContext(CommonContext):
         if have == tag:
             if self.pending_profile == name:
                 self.pending_profile = None
+                if used and self.stored_data.get(self.profile_key()) == name:
+                    # the card profile loaded over our fresh mark carries the mark itself (the tag is
+                    # saved with the profile) and is the one this seed was registered to
+                    self.say_profile(("ours", name), "Playing on profile %r (this seed's).", name)
+                    return True
                 if used:
                     # a card profile loaded over the one just claimed: let it go
                     if not self.read_only:
@@ -403,6 +421,15 @@ class TSFPContext(CommonContext):
         elif have:
             self.say_profile(("other", name), "Profile %r belongs to a different seed, so it is ignored. Create a "
                              "new profile for this seed.%s", name, self.seed_profile_hint(), warn=True)
+        elif self.is_returning_profile(gamedata, name):
+            # the game did not keep the client's mark on this profile (or it predates it), but it is
+            # the profile this seed was registered to and holds nothing the server does not know
+            if not self.read_only:
+                gamestate.set_profile_tag(gamedata, tag)
+            self.say_profile(("ours", name), "Profile %r is this seed's (matched by name and progress); "
+                             "playing on it.", name)
+            await self.registered(name)
+            return True
         else:
             self.say_profile(("used", name), "Profile %r already has progress, so it is ignored: nothing is sent "
                              "or unlocked on it. Create a new profile for this seed.%s To play this seed on %r "
