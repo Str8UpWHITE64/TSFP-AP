@@ -587,10 +587,14 @@ def clear_ungranted_weapons(pawn: int, allowed_slots: typing.Set[int],
         held = 0
     held_slot = row_family.get(held)
     if held_slot is not None and held_slot not in allowed_slots and held_slot not in data.WEAPON_BASELINE:
+        # Only a gun (or bare hands): grenades have no animations for a hand caught in a gun's
+        # draw, and switching to them while a just-picked-up gun came out crashed Scotland the
+        # Brave (the anim lookup came back NULL). Grenade slots only ever hold grenades.
         fallback = mm.UNARMED_SLOT
         for slot in sorted(allowed_slots, reverse=True):
             row = data.WEAPON_ROWS.get(slot, (None,))[0]
-            if row is not None and owned[row] and slot in data.WEAPON_COMBAT:
+            if (row is not None and owned[row] and slot in data.WEAPON_COMBAT
+                    and slot not in data.WEAPON_GRENADE and slot not in data.WEAPON_MINE):
                 fallback = row
                 break
         w32(pawn + mm.PAWN_HELD, fallback)
