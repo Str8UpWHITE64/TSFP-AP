@@ -154,6 +154,16 @@ PROJECTILE_MODELS = {
     0x16: (0x746,),                     # GRENADE_OB
     0x17: (0x74B,),                     # TIMEGRENADE_OB
 }
+# When a guard dies in Story, the gun he drops (FUN_800971c4 -> FUN_80093688) is shown as a
+# harpoon or a dart if his gun's stats fire ammo type 0x20 / 0x21, whatever the gun. Those two
+# models are loaded only by the Harpoon Gun's and the Injector's own stats callbacks, but the
+# shuffle lends the ammo type to whatever gun takes the slot: a Shotgun in the Harpoon Gun's
+# place in You Take the High Road dropped a HARPOON that was never loaded, and the game crashed
+# like U-Genix. Keyed by the ammo the level's stats fire after the shuffle.          [live]
+DROP_MODELS_BY_AMMO = {
+    0x20: (0x754,),                     # HARPOON
+    0x21: (0x753,),                     # DART
+}
 PRECACHE_HOOK_ADDR = 0x801A820C
 PRECACHE_HOOK_APPLIED = 0x480183E5     # bl <cave at 0x801C05F0>
 # The camera update reads a zeroed stand-in when there is no game object (patcher

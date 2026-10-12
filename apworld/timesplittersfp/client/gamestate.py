@@ -878,11 +878,13 @@ class WeaponTables:
                 out.append(native)
         return out[:mm.PRECACHE_MAX_TYPES]
 
-    def projectile_models(self, gun: bytes, level_slots) -> typing.List[int]:
+    def projectile_models(self, gun: bytes, level_slots, ammo: typing.Optional[bytes] = None) -> typing.List[int]:
         """Object types of the projectiles the level's (shuffled-in) guns fire. The level
         precache picks them from each stats record's ammo types, which the shuffle has
         swapped for the slot's native ones, so it would load the native gun's (see memmap
-        PROJECTILE_MODELS)."""
+        PROJECTILE_MODELS). Plus the models a dead guard's dropped gun takes from the ammo
+        it fires after the shuffle (`ammo`, the swapped Gun Stats ammo; memmap
+        DROP_MODELS_BY_AMMO)."""
         pa = self.pristine[3]
         out = []
         for slot in sorted(level_slots):
@@ -894,6 +896,9 @@ class WeaponTables:
                     for k in (0, 4):
                         t = int.from_bytes(pa[i * 8 + k:i * 8 + k + 4], "big")
                         out += [m for m in mm.PROJECTILE_MODELS.get(t, ()) if m not in out]
+                        if ammo is not None:
+                            t = int.from_bytes(ammo[i * 8 + k:i * 8 + k + 4], "big")
+                            out += [m for m in mm.DROP_MODELS_BY_AMMO.get(t, ()) if m not in out]
         return out
 
     def apply(self, remap: dict, key, level_slots=()) -> bool:
@@ -907,7 +912,7 @@ class WeaponTables:
         types = []
         if remap:
             # projectiles first: a missing one crashes the game the moment it is fired
-            types = self.projectile_models(gun, level_slots)
+            types = self.projectile_models(gun, level_slots, ammo)
             types += [t for t in self.native_drop_models(ui, level_slots) if t not in types]
             types = types[:mm.PRECACHE_MAX_TYPES]
         # the list goes in first: the level's precache must never see the swapped
