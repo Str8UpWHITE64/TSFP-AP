@@ -205,7 +205,7 @@ ITEM_DATA_STRIDE = 0xD8
 ITEM_TAKEN_BY = 0x04
 ITEM_TYPE = 0x0C                       # 8 health, 0x10 armour
 ITEM_WAR_RECORD = 0x18                 # -> .war item record + 0x34; elsewhere for spawned drops
-ITEM_SPAWN_POS = 0x1C                  # 3 floats: where a spawned drop appeared
+ITEM_SPAWN_POS = 0x20                  # 3 floats (obj +0x64): where a spawned drop appeared; +0x1C is the spawner's 4th argument, not a position
 PICKUP_TYPES = {8: "Health", 0x10: "Armour"}
 # A level's .war item list: the level table row (stride 0x80; +4 u16 non-zero while the
 # table goes on, +8 level id, +0x24 params) -> params +0x14 = first item record.

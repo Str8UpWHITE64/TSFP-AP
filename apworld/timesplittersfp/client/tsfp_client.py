@@ -127,6 +127,7 @@ class TSFPContext(CommonContext):
         self.objectives = gamestate.ObjectiveWatcher()
         self.objective_hits: typing.Set[int] = set()
         self.pickup_hits: typing.Set[int] = set()
+        self.unmatched_pickups: typing.Set[tuple] = set()
         self.map_areas = gamestate.MapAreas()
         self.map_area_sent = None               # (mission, area) last published for the tracker
         self.map_area_seen = None
@@ -486,6 +487,11 @@ class TSFPContext(CommonContext):
                         if ckind == kind]
                 near.sort()
                 loc = near[0][1] if near and near[0][0] <= 2.5 ** 2 else None
+            if loc is None:
+                key = (mission, idx, kind, tuple(round(c) for c in pos))
+                if key not in self.unmatched_pickups:
+                    self.unmatched_pickups.add(key)
+                    note("Pickup taken but not a check: %s %s at %.1f, %.1f, %.1f (.war #%s)", name, kind, *pos, idx)
             if loc is not None:
                 if loc not in self.sent_locations and loc not in self.pickup_hits:
                     note("Pickup taken: %s", gamestate.LOCATION_NAME.get(loc, loc))
