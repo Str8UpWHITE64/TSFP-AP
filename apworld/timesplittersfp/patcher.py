@@ -178,10 +178,19 @@ PAK_MOUNT_TEST = (
 # now also store 5 there (r31 = 0x805cc608, the story struct; state = r31 + 0xC).
 # Site 2 has the four words for it; site 1 (three words) branches into site 2, which
 # then branches on to 80032284 -- the phase-3 check it skips cannot fire in phase 2.
+#
+# Site 1 also has to clear the load struct. It runs from the menu dispatcher on the
+# menu's own struct (DAT_805cc640), which still holds what the mission's intro
+# cutscene put there: flags 0x20000000 (skippable cutscene), +0x4E = 2 and the
+# cutscene id. The front end loaded with those came up black, its game object freed
+# at once, while the menu ran on unseen (seen live after Machine Wars, which has no
+# outro). Site 2 is reached through FUN_80032444's zeroed struct and never had this.
+# So site 1 zeroes the level/mode word (+0x4C) and the flags (+0x50) first; r5 is
+# still the 0 loaded at 8003200c.
 STORY_NO_AUTO_ADVANCE = [
     (0x8003209C,
      [0x38030001, 0x90BF0030, 0x901F0028],
-     [0x480001B4, NOP, NOP],                 # b 0x80032250
+     [0x90BE004C, 0x90BE0050, 0x480001AC],   # stw r5,0x4c(r30) ; stw r5,0x50(r30) ; b 0x80032250
      "after a mission with no post-cutscene, return to the menu (via the next site)"),
     (0x80032250,
      [0x38030001, 0x38600000, 0x907F0030, 0x90040028],
@@ -553,7 +562,8 @@ LEGACY = {
                   0x281E003A, 0x41810024, 0x3BFF0004, 0x2C1E0000, 0x41820018, 0x847F0004,
                   0x63840000, 0x4BFE7449, 0x3BDEFFFF, 0x4BFFFFE8, 0x80010014, 0x38210010,
                   0x7C0803A6, 0x4E800020, NOP, NOP]],
-    0x8003209C: [[0x38000065, 0x981E004C, NOP]],                       # return to menu, v1
+    0x8003209C: [[0x38000065, 0x981E004C, NOP],                        # return to menu, v1
+                 [0x480001B4, NOP, NOP]],                              # return to menu, v2 (stale struct)
     0x80032250: [[0x38000065, 0x981E004C, NOP, NOP]],                  # return to menu, v1
     0x801C0B60: [[0x39610020, 0x800DA434, 0x2C000000, 0x4D820020,      # camera guard, v1
                   0x9421FD40, 0x4BEDD420]],
