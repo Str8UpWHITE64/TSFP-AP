@@ -322,6 +322,8 @@ OBJ_RULES = {
     ("Scotland the Brave", 5): lambda h: h("MINE") and h("BLAST"),               # Destroy the enemy tank
     # Harry Tipper has to be covered from a distance: a ranged, non-explosive, non-shotgun gun.
     ("The Russian Connection", 2): lambda h: h("RANGED"),                        # Protect Harry Tipper
+    # Past "Machine Wars - Health 3" (the pickup that follows the implant) everything needs a ranged gun.
+    ("Machine Wars", 3): lambda h: h("RANGED"),                                  # Locate the UltraNet secret laboratory
     # Everything after "Protect Jo-Beth" needs the Ghost Gun (pinned in this level).
     ("What Lies Below", 0): lambda h: h("GHOST") and OBJ_RULE_DEFAULT(h),      # Uncover the identity...
     ("What Lies Below", 2): lambda h: h("GHOST") and h("HARPOON_OR_BLAST"),    # Eliminate 'Princess'
@@ -607,12 +609,19 @@ try:
 except ImportError:                             # the client imports data.py directly
     from pickups import PICKUPS, UNVERIFIED
 
+# Pickups that need a weapon group beyond their objectives (pickups.py is generated, so the extra
+# tokens live here): Machine Wars' spots after Health 3 (spot 2) are past the point that wants a ranged gun.
+PICKUP_EXTRA_NEEDS = {("Machine Wars", n): ("RANGED",) for n in (3, 4, 5, 6, 7, 8)}
+
 PICKUP_LOC_INFO = {}   # AP location name -> (mission, spot) with spot as in pickups.py
 PICKUP_UNVERIFIED = set()   # names of spots no mapping run has taken: excluded (filler only)
 for _mi, _m in enumerate(STORY):
     _count = {}
     for _spot in PICKUPS.get(_m, []):
         _n, _kind, _war, _diffs, _pos, _needs, _extra, _cont = _spot
+        if not _cont and (_m, _n) in PICKUP_EXTRA_NEEDS:
+            _extra = tuple(_extra) + PICKUP_EXTRA_NEEDS[(_m, _n)]
+            _spot = (*_spot[:6], _extra, _cont)
         assert _n < 0x20
         _count[(_kind, _cont)] = _count.get((_kind, _cont), 0) + 1
         _ln = f"{DISPLAY_OF[_m]} - {'Container ' if _cont else ''}{_kind} {_count[(_kind, _cont)]}"
