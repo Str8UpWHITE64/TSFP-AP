@@ -209,6 +209,51 @@ def build_objectives():
 OBJECTIVES_BY_MISSION, UNDERIVABLE_OBJECTIVES = build_objectives()
 
 
+# The objective whose completion ends each mission, for the backup clear send (the bit the game
+# sets is the primary path). Objective indexes do NOT run in play order (Time to Split ends on
+# objective 0, You Genius, U-Genix on 5, The Russian Connection on 7), so this is an explicit
+# table. Evidence: client logs where the clear was sent in the same poll as the objective
+# (Time to Split, The Khallos Express, Machine Wars); full-run objective timelines from the
+# pickup runs (The Russian Connection, What Lies Below, Breaking and Entering, You Genius,
+# U-Genix, Something to Crow About, The Hooded Man: its run ends the instant 'Protect your past
+# self' completes, matching the level ending when the past self enters the base). Left out, so
+# the bit stays their only path: Scotland the Brave (the level ends a little after the tank, the
+# last objective, with nothing later to use), Mansion of Madness (its run completes objectives
+# out of order), You Take the High Road, and Future Perfect (its goal also waits for the Time
+# Crystals).
+FINAL_OBJECTIVE = {
+    "Time to Split": 0, "The Russian Connection": 7,
+    "The Khallos Express": 5, "What Lies Below": 3, "Breaking and Entering": 6,
+    "You Genius, U-Genix": 5, "Machine Wars": 3, "Something to Crow About": 4,
+    "The Hooded Man": 0,
+}
+FINAL_LOCATION = {data.STORY.index(_m): OBJ_LOCATION[(data.STORY.index(_m), _i)]
+                  for _m, _i in FINAL_OBJECTIVE.items()}
+
+
+def difficulty_played() -> typing.Optional[int]:
+    """0 Easy, 1 Normal, 2 Hard for the story mission now loaded, else None."""
+    try:
+        if not in_story():
+            return None
+        d = u8(mm.DIFFICULTY_BYTE_ADDR)
+    except Exception:
+        return None
+    return d if 0 <= d <= 2 else None
+
+
+def backup_clear_locations(newly: typing.Set[int]) -> typing.Set[int]:
+    """The level-clear locations implied by a mission's final objective just completing: the
+    difficulty played and every lower one (the game's own bits are cumulative)."""
+    mission = current_mission()
+    if mission is None or FINAL_LOCATION.get(mission) not in newly:
+        return set()
+    diff = difficulty_played()
+    if diff is None:
+        return set()
+    return {STORY_BASE + mission * 3 + di for di in range(diff + 1)}
+
+
 def objective_pool() -> typing.Optional[int]:
     try:
         pool = u32(mm.OBJ_POOL_PTR)

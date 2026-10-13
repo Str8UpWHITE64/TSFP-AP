@@ -505,6 +505,12 @@ class TSFPContext(CommonContext):
             note("Objective completed: %s", gamestate.LOCATION_NAME.get(loc, loc))
         self.objective_hits |= newly
         found = set(self.objective_hits)
+        if not self.read_only:
+            backup = gamestate.backup_clear_locations(newly)
+            for loc in sorted(backup - self.sent_locations):
+                note("Mission's final objective completed: sending %s as a backup.",
+                     gamestate.LOCATION_NAME.get(loc, loc))
+            found |= backup
         for mission_index, entries in gamestate.OBJECTIVES_BY_MISSION.items():
             cleared = gamestate.story_cleared_mask(gamedata, mission_index)
             if cleared:
