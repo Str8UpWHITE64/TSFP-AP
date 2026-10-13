@@ -26,6 +26,10 @@ SCOPE_COMPLETELY_RANDOM, SCOPE_SAME_CLASS, SCOPE_WITHIN_LEVEL = 0, 1, 2
 SLOT_DATA_VERSION = 4
 # Smallest Time Crystal gate the density clamp may leave behind (see create_items).
 TC_REQUIRED_FLOOR = 7
+# With Weapon Gating, the fewest checks the starting unlocks may open on their own (see create_items), and
+# how many random draws are tried to reach it.
+START_REACH_MIN = 5
+STARTER_TRIES = 100
 
 
 class TSFPItem(Item):
@@ -295,6 +299,34 @@ class TSFPWorld(World):
     def get_filler_item_name(self) -> str:
         return data.FILLER_ITEM
 
+    def _starting_weapons(self, starters) -> set:
+        """The gun each starting story mission hands you first (remap-aware); a baseline gun if none."""
+        mission_of_item = {data.ITEM_OF[m]: m for m in data.STORY}
+        starter_weapons = set()
+        for st in starters:
+            m = mission_of_item.get(st)
+            if m is not None and m in data.LEVEL_PRIMARY_SLOT:
+                ps = data.LEVEL_PRIMARY_SLOT[m]
+                starter_weapons.add(data.WEAPON_ITEM_OF[self._remap_for(m).get(ps, ps)])
+        if not starter_weapons:
+            starter_weapons.add(data.WEAPON_ITEM_OF[2])
+        return starter_weapons
+
+    def _start_reach(self, starters, active_locs) -> int:
+        """How many (non-excluded) checks the starting unlocks and their guns open with nothing else."""
+        held = set(starters) | self._starting_weapons(starters)
+
+        class Held:
+            def has(_, item, player, count=1):
+                return item in held
+
+            def has_any(_, items, player):
+                return any(i in held for i in items)
+
+        state = Held()
+        return sum(1 for ln, u in active_locs
+                   if u in held and not self._excluded(ln, u) and self._location_rule(ln, u)(state))
+
     def create_items(self) -> None:
         active_locs = self._active_locations()
         units = self._active_units(active_locs)
@@ -307,9 +339,26 @@ class TSFPWorld(World):
             story_units = [u for u in units if u in set(data.STORY_ITEMS) and u != data.FINAL_STORY_ITEM]
             arcade_units = [u for u in units if u in data.item_name_groups["Arcade"]]
             chal_units = [u for u in units if u in data.item_name_groups["Challenge"]]
-            starters = (self.random.sample(story_units, min(n, len(story_units)))
-                        + self.random.sample(arcade_units, min(n, len(arcade_units)))
-                        + self.random.sample(chal_units, min(n, len(chal_units))))
+            best = None
+            for _ in range(STARTER_TRIES):
+                starters = (self.random.sample(story_units, min(n, len(story_units)))
+                            + self.random.sample(arcade_units, min(n, len(arcade_units)))
+                            + self.random.sample(chal_units, min(n, len(chal_units))))
+                if not self.gating:
+                    break
+                # With Weapon Gating the starting kit has to open enough checks on its own: the fill hangs
+                # the first unlocks off whatever is reachable at the start, and a story mission that needs a
+                # tool nobody starts with (Something to Crow About) or a gun past its first pickup would
+                # leave it with nowhere to put them.
+                count = self._start_reach(starters, active_locs)
+                if best is None or count > best[0]:
+                    best = (count, starters)
+                if count >= START_REACH_MIN:
+                    break
+            else:
+                starters = best[1]
+                logging.warning("%s (player %d): the starting unlocks open only %d checks (wanted %d).",
+                                GAME, self.player, best[0], START_REACH_MIN)
         self.starters = list(starters)
         for name in starters:
             self.multiworld.push_precollected(self.create_item(name))
@@ -322,15 +371,7 @@ class TSFPWorld(World):
             if pt.get("starting_weapons") is not None:
                 starter_weapons = {w for w in pt["starting_weapons"] if w in data.WEAPON_ITEM_OF.values()}
             else:
-                mission_of_item = {data.ITEM_OF[m]: m for m in data.STORY}
-                starter_weapons = set()
-                for st in starters:
-                    m = mission_of_item.get(st)
-                    if m is not None and m in data.LEVEL_PRIMARY_SLOT:
-                        ps = data.LEVEL_PRIMARY_SLOT[m]
-                        starter_weapons.add(data.WEAPON_ITEM_OF[self._remap_for(m).get(ps, ps)])
-                if not starter_weapons:
-                    starter_weapons.add(data.WEAPON_ITEM_OF[2])
+                starter_weapons = self._starting_weapons(starters)
             self.starter_weapons = sorted(starter_weapons)
             for it in starter_weapons:
                 self.multiworld.push_precollected(self.create_item(it))
@@ -385,6 +426,79 @@ class TSFPWorld(World):
         victory.place_locked_item(TSFPItem("Victory", ItemClassification.progression, None, self.player))
         menu.locations.append(victory)
 
+    # ---- per-location access rules (also evaluated by create_items against the starting kit) ----
+    _DORDER = ("Easy", "Normal", "Hard")
+
+    def _make_h(self, mission, difficulty, state):
+        p = self.player
+
+        def h(tok):
+            if tok in data.WEAPON_GROUPS:
+                items = data.level_category_items(mission, tok, self._remap_for(mission), difficulty)
+                return bool(items) and state.has_any(items, p)
+            return state.has(data.WEAPON_ITEM_OF[data.WEAPON_TOOL_SLOT[tok]], p)
+        h.difficulty = difficulty
+        return h
+
+    def _armed(self, mission, difficulty, state):
+        items = data.level_early_combat_items(mission, self._remap_for(mission), difficulty)
+        return bool(items) and state.has_any(items, self.player)
+
+    def _complete_ok(self, mission, difficulty, diffs, state):
+        if not self._armed(mission, difficulty, state):
+            return False
+        if difficulty == "Hard":
+            sec = data.LEVEL_HARD_SECONDARY.get(mission)
+            if sec is not None:
+                item = data.WEAPON_ITEM_OF.get(self._remap_for(mission).get(sec, sec))
+                if item is not None and not state.has(item, self.player):
+                    return False
+        h = self._make_h(mission, difficulty, state)
+        for idx, _name, prim, _sec in data.OBJECTIVES.get(mission, []):
+            if (prim & diffs) and not data.objective_rule(mission, idx)(h):
+                return False
+        return True
+
+    def _location_rule(self, loc_name, unit):
+        """The access rule for one location, not counting the goal gate on the final story."""
+        p = self.player
+        gating = self.gating
+        sel_diffs = set(self.diffs)
+        easiest = next((d for d in self._DORDER if d in sel_diffs), "Easy")
+
+        def easiest_for(prim, sec):
+            appears = (prim | sec) & sel_diffs
+            return next((d for d in self._DORDER if d in appears), easiest)
+
+        info = data.OBJ_LOC_INFO.get(loc_name)
+        pk = data.PICKUP_LOC_INFO.get(loc_name)
+        mc = self._misscomp.get(loc_name)
+        if gating and pk is not None:
+            mission, spot = pk
+            d = easiest_for(frozenset(spot[3]), frozenset())
+            needs = [data.objective_rule(mission, i) for i in spot[5]]
+            extra = spot[6]
+            return (lambda state, m=mission, d=d, needs=needs, extra=extra, u=unit:
+                    state.has(u, p) and self._armed(m, d, state)
+                    and all(r(self._make_h(m, d, state)) for r in needs)
+                    and all(self._make_h(m, d, state)(t) for t in extra))
+        if gating and info is not None:
+            idx, prim, sec, mission = info
+            d = easiest_for(prim, sec)
+            if (mission, idx) in data.MISSION_COMPLETE_OBJS:
+                return (lambda state, m=mission, d=d, u=unit:
+                        state.has(u, p) and self._complete_ok(m, d, frozenset({d}), state))
+            r = data.objective_rule(mission, idx)
+            return (lambda state, m=mission, d=d, r=r, u=unit:
+                    state.has(u, p) and self._armed(m, d, state) and r(self._make_h(m, d, state)))
+        if gating and mc is not None:
+            m, d = mc
+            return (lambda state, m=m, d=d, u=unit:
+                    state.has(u, p) and self._complete_ok(m, d, frozenset({d}), state))
+        return lambda state, u=unit: state.has(u, p)
+
+    _misscomp = {f"{data.DISPLAY_OF[m]} ({d})": (m, d) for m in data.STORY for d in data.STORY_DIFFICULTIES}
+
     # ---- rules ----
     def set_rules(self) -> None:
         p = self.player
@@ -393,7 +507,6 @@ class TSFPWorld(World):
         tc = data.TIME_CRYSTAL_ITEM
         req = self.tc_required
         gating = self.gating
-        sel_diffs = set(self.diffs)
 
         if not self.story:
             event_items = self._trophy_event_items()
@@ -408,73 +521,9 @@ class TSFPWorld(World):
             def goal_rule(state) -> bool:
                 return state.has(final, p) and state.has(tc, p, req)
 
-        DORDER = ["Easy", "Normal", "Hard"]
-
-        def make_h(mission, difficulty, state):
-            def h(tok):
-                if tok in data.WEAPON_GROUPS:
-                    items = data.level_category_items(mission, tok, self._remap_for(mission), difficulty)
-                    return bool(items) and state.has_any(items, p)
-                return state.has(data.WEAPON_ITEM_OF[data.WEAPON_TOOL_SLOT[tok]], p)
-            h.difficulty = difficulty
-            return h
-
-        def armed(mission, difficulty, state):
-            items = data.level_early_combat_items(mission, self._remap_for(mission), difficulty)
-            return bool(items) and state.has_any(items, p)
-
-        def complete_ok(mission, difficulty, diffs, state):
-            if not armed(mission, difficulty, state):
-                return False
-            if difficulty == "Hard":
-                sec = data.LEVEL_HARD_SECONDARY.get(mission)
-                if sec is not None:
-                    item = data.WEAPON_ITEM_OF.get(self._remap_for(mission).get(sec, sec))
-                    if item is not None and not state.has(item, p):
-                        return False
-            h = make_h(mission, difficulty, state)
-            for idx, _name, prim, _sec in data.OBJECTIVES.get(mission, []):
-                if (prim & diffs) and not data.objective_rule(mission, idx)(h):
-                    return False
-            return True
-
-        misscomp = {f"{data.DISPLAY_OF[m]} ({d})": (m, d) for m in data.STORY for d in data.STORY_DIFFICULTIES}
-        easiest = next((d for d in DORDER if d in sel_diffs), "Easy")
-
-        def easiest_for(prim, sec):
-            appears = (prim | sec) & sel_diffs
-            return next((d for d in DORDER if d in appears), easiest)
-
         for loc_name, unit in self._unit_of.items():
             gate = goal_rule if unit == final else None
-            info = data.OBJ_LOC_INFO.get(loc_name)
-            mc = misscomp.get(loc_name)
-            pk = data.PICKUP_LOC_INFO.get(loc_name)
-            if gating and pk is not None:
-                mission, spot = pk
-                d = easiest_for(frozenset(spot[3]), frozenset())
-                needs = [data.objective_rule(mission, i) for i in spot[5]]
-                extra = spot[6]
-                rule = (lambda state, m=mission, d=d, needs=needs, extra=extra, u=unit:
-                        state.has(u, p) and armed(m, d, state)
-                        and all(r(make_h(m, d, state)) for r in needs)
-                        and all(make_h(m, d, state)(t) for t in extra))
-            elif gating and info is not None:
-                idx, prim, sec, mission = info
-                d = easiest_for(prim, sec)
-                if (mission, idx) in data.MISSION_COMPLETE_OBJS:
-                    rule = (lambda state, m=mission, d=d, u=unit:
-                            state.has(u, p) and complete_ok(m, d, frozenset({d}), state))
-                else:
-                    r = data.objective_rule(mission, idx)
-                    rule = (lambda state, m=mission, d=d, r=r, u=unit:
-                            state.has(u, p) and armed(m, d, state) and r(make_h(m, d, state)))
-            elif gating and mc is not None:
-                m, d = mc
-                rule = (lambda state, m=m, d=d, u=unit:
-                        state.has(u, p) and complete_ok(m, d, frozenset({d}), state))
-            else:
-                rule = (lambda state, u=unit: state.has(u, p))
+            rule = self._location_rule(loc_name, unit)
             get(loc_name, p).access_rule = rule if gate is None else (
                 lambda state, rule=rule, gate=gate: gate(state) and rule(state))
 
@@ -482,7 +531,7 @@ class TSFPWorld(World):
             gd = self.goal_difficulty
 
             def victory_rule(state) -> bool:
-                return goal_rule(state) and complete_ok(data.FINAL_STORY_MISSION, gd, frozenset({gd}), state)
+                return goal_rule(state) and self._complete_ok(data.FINAL_STORY_MISSION, gd, frozenset({gd}), state)
         else:
             victory_rule = goal_rule
         get("Victory", p).access_rule = victory_rule
