@@ -284,7 +284,12 @@ WEAPON_BLAST = WEAPON_EXP | WEAPON_EXPLOSIVE_ALT
 # What Lies Below's Princess: shot in the mouth with the Harpoon Gun -- a rocket did the
 # same job in a live test (2026-09-30), so any explosive-capable weapon counts too.
 WEAPON_HARPOON_OR_BLAST = WEAPON_BLAST | frozenset({21})
-WEAPON_GROUPS = {"REG": WEAPON_REG, "EXP": WEAPON_EXP, "MINE": WEAPON_MINE, "FIRE": WEAPON_FIRE,
+# Guns that hit a distant target with enough ammo: the regular guns minus the shotgun-style spreads
+# (Tactical 12-Gauge, Shotgun, Dispersion Gun) and the short-range or ammo-starved ones (Flare Gun,
+# Injector, Harpoon Gun). Explosives, mines and the Flamethrower are not in WEAPON_REG, so they are out too.
+# Used by The Russian Connection's "Protect Harry Tipper".
+WEAPON_RANGED = WEAPON_REG - frozenset({14, 53, 15, 12, 58, 21})
+WEAPON_GROUPS = {"RANGED": WEAPON_RANGED, "REG": WEAPON_REG, "EXP": WEAPON_EXP, "MINE": WEAPON_MINE, "FIRE": WEAPON_FIRE,
                  "BLAST": WEAPON_BLAST, "HARPOON_OR_BLAST": WEAPON_HARPOON_OR_BLAST}
 WEAPON_TOOL_SLOT = {"ELECTRO": 23, "GHOST": 34}
 WEAPON_COMBAT = WEAPON_REG | WEAPON_EXP | WEAPON_MINE | WEAPON_FIRE
@@ -315,6 +320,8 @@ OBJ_RULES = {
     # The tank has to be stalled with an explosive (hand grenades or the K-SMG's grenade
     # launcher; the Flare Gun does nothing) and then finished with TNT or another mine.
     ("Scotland the Brave", 5): lambda h: h("MINE") and h("BLAST"),               # Destroy the enemy tank
+    # Harry Tipper has to be covered from a distance: a ranged, non-explosive, non-shotgun gun.
+    ("The Russian Connection", 2): lambda h: h("RANGED"),                        # Protect Harry Tipper
     # Everything after "Protect Jo-Beth" needs the Ghost Gun (pinned in this level).
     ("What Lies Below", 0): lambda h: h("GHOST") and OBJ_RULE_DEFAULT(h),      # Uncover the identity...
     ("What Lies Below", 2): lambda h: h("GHOST") and h("HARPOON_OR_BLAST"),    # Eliminate 'Princess'
@@ -328,6 +335,8 @@ OBJ_RULES = {
 }
 # Inter-objective dependencies: a dependent objective's rule ANDs in each required one's.
 OBJ_REQUIRES = {
+    # everything after Harry Tipper (and so the clear) needs the same ranged gun
+    **{("The Russian Connection", i): [2] for i in (3, 4, 5, 6, 7, 9)},
     ("Mansion of Madness", 1): [0],
     ("Mansion of Madness", 2): [0],
     ("Mansion of Madness", 3): [0],
