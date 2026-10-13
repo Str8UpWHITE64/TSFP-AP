@@ -454,6 +454,64 @@ DROP_MODEL = (
     "weapon shuffle: a dropped gun shows its own model, not the harpoon or dart its ammo picks",
 )
 
+# --- weapons: a stuck harpoon or dart refills the gun that fired it --------------------
+# A spent harpoon or dart stuck in a wall becomes an ammo pickup (FUN_800c0250) of the
+# Harpoon Gun's ammo 0x20 or the Injector's 0x21, whatever the gun fires. Under the shuffle
+# the Harpoon Gun in the Tactical 12-Gauge's place fires shotgun shells, so its spent bolts
+# gave ammo no gun held. The ammo pickup handler FUN_8009510c now gives a stuck one the ammo
+# the Harpoon Gun's / Injector's stats (0xb / 0x26) fire, and gives it unscaled: one bolt is
+# one harpoon (the scaling cave would have made it 8 in a rocket launcher's slot). A stuck one
+# is told apart the game's own way (FUN_80093e3c): ammo 0x20/0x21 with its projectile at
+# +0xbc. Placed harpoon ammo still feeds the gun in the Harpoon Gun's slot. Unshuffled, the
+# stats fire 0x20/0x21 and nothing changes.
+#
+# Three words of FUN_8009510c call into the cave: both loads of the pickup's ammo type
+# (800951a8 for the give, the amount before it and the auto-switch check, 800951f4 for the
+# auto-switch call) and the give itself, which takes FUN_801a9a8c's own prologue past the
+# scaling hook when the type was remapped.
+#
+# The cave space comes from the five cheat-code callbacks 1..5 (801c0660..801c0714, nine
+# words each: a frame around `li r3,N ; bl FUN_801c057c`). They become two-word tail calls
+# and the cheat table points at the new ones, which frees 35 words. (Ghidra-checked;
+# simulated with the real give and scaling cave for every case.)
+CHEAT_STUBS = (
+    0x801C0660,
+    [0x9421FFF0, 0x7C0802A6, 0x38600001, 0x90010014, 0x4BFFFF0D, 0x80010014, 0x7C0803A6, 0x38210010,
+     0x4E800020, 0x9421FFF0, 0x7C0802A6, 0x38600002, 0x90010014, 0x4BFFFEE9, 0x80010014, 0x7C0803A6,
+     0x38210010, 0x4E800020, 0x9421FFF0, 0x7C0802A6, 0x38600003, 0x90010014, 0x4BFFFEC5, 0x80010014,
+     0x7C0803A6, 0x38210010, 0x4E800020, 0x9421FFF0, 0x7C0802A6, 0x38600004, 0x90010014, 0x4BFFFEA1,
+     0x80010014, 0x7C0803A6, 0x38210010, 0x4E800020, 0x9421FFF0, 0x7C0802A6, 0x38600005, 0x90010014,
+     0x4BFFFE7D, 0x80010014, 0x7C0803A6, 0x38210010, 0x4E800020],
+    [0x38600001, 0x4BFFFF18, 0x38600002, 0x4BFFFF10, 0x38600003, 0x4BFFFF08, 0x38600004, 0x4BFFFF00,
+     0x38600005, 0x4BFFFEF8,                 # li r3,N ; b FUN_801c057c (cheats 1..5)
+     # 801c0688: the pickup's ammo type, remapped for a stuck harpoon/dart
+     0x809E0040, 0x801E00BC, 0x2C000000, 0x4D820020,    # lwz r4,0x40(r30) ; lwz r0,0xbc(r30) ; beqlr
+     0x80CD9260, 0x2C040020, 0x38C61CC8, 0x41820010,    # r6 = Gun Stats ; 0x20 -> stats 0xb +0x14
+     0x2C040021, 0x4C820020, 0x38C64674,                # 0x21 -> stats 0x26 +0x14 ; else blr
+     0x80860000, 0x4E800020,                            # lwz r4,0(r6) ; blr
+     # 801c06bc: the give, unscaled when the type was remapped
+     0x801E0040, 0x7C002000, 0x40820008, 0x4BFE93C4,    # same type: b FUN_801a9a8c
+     0x9421FFE0, 0x7C0802A6, 0x90010024, 0x39610020,    # else its prologue ...
+     0x481C2011, 0x7C7E1B78, 0x7C9D2378, 0x7CBC2B78,
+     0x4BFE93C0,                                        # ... b 801a9aac, past the scaling hook
+     NOP, NOP, NOP, NOP, NOP, NOP, NOP, NOP, NOP],
+    "weapon shuffle: cheat callbacks compacted; cave that remaps a stuck harpoon's ammo",
+)
+CHEAT_STUB_TABLE = [
+    (0x8044ED50, [0x801C0684], [0x801C0668], "weapon shuffle: cheat 2 calls its compacted callback"),
+    (0x8044ED80, [0x801C06A8], [0x801C0670], "weapon shuffle: cheat 3 calls its compacted callback"),
+    (0x8044EDB0, [0x801C06CC], [0x801C0678], "weapon shuffle: cheat 4 calls its compacted callback"),
+    (0x8044EDE0, [0x801C06F0], [0x801C0680], "weapon shuffle: cheat 5 calls its compacted callback"),
+]
+STUCK_AMMO_HOOKS = [
+    (0x800951A8, [0x809E0040], [0x4812B4E1],    # lwz r4,0x40(r30) -> bl <remap>
+     "weapon shuffle: a stuck harpoon's ammo type is remapped before the give"),
+    (0x800951D8, [0x481148B5], [0x4812B4E5],    # bl FUN_801a9a8c  -> bl <give>
+     "weapon shuffle: a stuck harpoon gives one harpoon, unscaled"),
+    (0x800951F4, [0x809E0040], [0x4812B495],    # lwz r4,0x40(r30) -> bl <remap>
+     "weapon shuffle: the auto-switch after a stuck harpoon sees the remapped ammo"),
+]
+
 PATCHES = [
     STORY_GATE,
     PAK_MOUNT_TEST,
@@ -471,7 +529,8 @@ PATCHES = [
     AMMO_DUAL_CAVE,
     AMMO_DUAL_HOOK,
     DROP_MODEL,
-]
+    CHEAT_STUBS,
+] + CHEAT_STUB_TABLE + STUCK_AMMO_HOOKS
 
 
 # --- optional: mouse look (--mouse) ---------------------------------------------
