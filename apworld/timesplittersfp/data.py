@@ -317,6 +317,9 @@ OBJ_RULES = {
     ("Mansion of Madness", 0): lambda h: h("FIRE"),                              # Investigate the Mansion
     # The helicopter only comes down to an explosive (the Heatseeker is pinned for it).
     ("The Khallos Express", 0): lambda h: h("EXP"),                              # Destroy the helicopter
+    # The blast door that opens the way into the castle takes the level's TNT (a mine slot; mines only
+    # shuffle among mines, so it is always a mine). Everything but "Escape the trap" is past it.
+    ("Scotland the Brave", 1): lambda h: h("MINE"),                               # Infiltrate the castle
     # The tank has to be stalled with an explosive (hand grenades or the K-SMG's grenade
     # launcher; the Flare Gun does nothing) and then finished with TNT or another mine.
     ("Scotland the Brave", 5): lambda h: h("MINE") and h("BLAST"),               # Destroy the enemy tank
@@ -337,6 +340,7 @@ OBJ_RULES = {
 }
 # Inter-objective dependencies: a dependent objective's rule ANDs in each required one's.
 OBJ_REQUIRES = {
+    **{("Scotland the Brave", i): [1] for i in (3, 5, 6, 7)},
     # everything after Harry Tipper (and so the clear) needs the same ranged gun
     **{("The Russian Connection", i): [2] for i in (3, 4, 5, 6, 7, 9)},
     ("Mansion of Madness", 1): [0],
