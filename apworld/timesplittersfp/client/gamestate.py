@@ -213,16 +213,15 @@ OBJECTIVES_BY_MISSION, UNDERIVABLE_OBJECTIVES = build_objectives()
 # sets is the primary path). Objective indexes do NOT run in play order (Time to Split ends on
 # objective 0, You Genius, U-Genix on 5, The Russian Connection on 7), so this is an explicit
 # table. Evidence: client logs where the clear was sent in the same poll as the objective
-# (Time to Split, The Khallos Express, Machine Wars); full-run objective timelines from the
-# pickup runs (The Russian Connection, What Lies Below, Breaking and Entering, You Genius,
-# U-Genix, Something to Crow About, The Hooded Man: its run ends the instant 'Protect your past
-# self' completes, matching the level ending when the past self enters the base). Left out, so
-# the bit stays their only path: Scotland the Brave (the level ends a little after the tank, the
-# last objective, with nothing later to use), Mansion of Madness (its run completes objectives
-# out of order), You Take the High Road, and Future Perfect (its goal also waits for the Time
-# Crystals).
+# (Time to Split, Scotland the Brave, The Khallos Express, Machine Wars); full-run objective
+# timelines from the pickup runs (The Russian Connection, What Lies Below, Breaking and
+# Entering, You Genius, U-Genix, Something to Crow About, The Hooded Man: its run ends the
+# instant 'Protect your past self' completes, matching the level ending when the past self
+# enters the base). Left out, so the bit stays their only path: Mansion of Madness (its run
+# completes objectives out of order), You Take the High Road, and Future Perfect (its goal also
+# waits for the Time Crystals).
 FINAL_OBJECTIVE = {
-    "Time to Split": 0, "The Russian Connection": 7,
+    "Time to Split": 0, "Scotland the Brave": 2, "The Russian Connection": 7,
     "The Khallos Express": 5, "What Lies Below": 3, "Breaking and Entering": 6,
     "You Genius, U-Genix": 5, "Machine Wars": 3, "Something to Crow About": 4,
     "The Hooded Man": 0,
