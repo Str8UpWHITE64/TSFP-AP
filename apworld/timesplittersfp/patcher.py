@@ -136,6 +136,23 @@ STORY_GATE = (
     "story missions (Time to Split included) are gated by client-owned medal bits",
 )
 
+# --- challenges and arcade league start locked ---------------------------------
+# FUN_802e0efc (boot init) builds every event's requirement record (+0xA8): it zeroes
+# the record, then writes {1} for the first match of each group and {5, previous
+# match, -1} for the rest -- the stock chain. The client overwrites all of them each
+# poll, but a game with no client attached kept the stock chain, so Challenges and
+# the Arcade League unlocked the vanilla way and that progress was sent as checks
+# once a client connected. Branching past the writes leaves every record {0}, locked,
+# until the client opens what the seed has granted.
+#     802e1030  bl    memset          ; record = {0, 0, 0, 0, 0}
+#     802e1034  cmpwi r23, 0          ; -> b 802e1054 (next match)
+EVENT_LOCK = (
+    0x802E1034,
+    [0x2C170000],
+    [0x48000020],
+    "challenges and arcade league matches start locked until the client opens them",
+)
+
 # --- story mounts gun.pak and chr.pak like every other mode --------------------
 # FUN_8002b314 mounts the level's paks and then, only if FUN_8002aeb8() says so,
 # pak/gun.pak and pak/chr.pak. That predicate is false exactly in Story (mode byte
@@ -514,6 +531,7 @@ STUCK_AMMO_HOOKS = [
 
 PATCHES = [
     STORY_GATE,
+    EVENT_LOCK,
     PAK_MOUNT_TEST,
 ] + STORY_NO_AUTO_ADVANCE + [
     CHEAT_CALLBACK,

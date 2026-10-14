@@ -89,6 +89,10 @@ EVENT_PTRS_CHALLENGE = 0x80461EE8     # events 0..20: pointer array
 EVENT_PTRS_ARCADE = 0x804653BC        # events 21..47: index by event id * 4
 EVENT_REQ_OFF = 0xA8
 EVENT_REQ_WORDS = 5
+# The patched image skips the boot init's stock chain, so every record starts {0}
+# (patcher EVENT_LOCK): nothing opens until a client writes it.
+EVENT_LOCK_PATCH_ADDR = 0x802E1034
+EVENT_LOCK_APPLIED = 0x48000020       # b 802e1054, past the record writes
 REQ_NEVER = 0
 REQ_ALWAYS = 1
 GROUPS_A = 0x80461F3C                 # groups 0..6 (challenge), stride 0x38

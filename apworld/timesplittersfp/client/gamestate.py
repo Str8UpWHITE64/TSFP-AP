@@ -318,6 +318,13 @@ def story_patch_present() -> bool:
     return words == mm.STORY_GATE_APPLIED
 
 
+def event_lock_patch_present() -> bool:
+    try:
+        return u32(mm.EVENT_LOCK_PATCH_ADDR) == mm.EVENT_LOCK_APPLIED
+    except Exception:
+        return False
+
+
 def mount_patch_present() -> bool:
     try:
         return u32(mm.PAK_MOUNT_PATCH_ADDR) == mm.PAK_MOUNT_APPLIED

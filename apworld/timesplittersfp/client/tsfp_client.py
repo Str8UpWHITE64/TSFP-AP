@@ -804,17 +804,18 @@ async def game_loop(ctx: TSFPContext):
             patched = (gamestate.story_patch_present(), gamestate.mount_patch_present(),
                        gamestate.sequencer_patch_present(), gamestate.precache_patch_present(),
                        gamestate.camera_patch_present(), gamestate.skip_intro_patch_present(),
-                       gamestate.ammo_patch_present())
+                       gamestate.ammo_patch_present(), gamestate.event_lock_patch_present())
             if patched != ctx.patched:
                 ctx.patched = patched
                 if all(patched):
                     note("Fully patched image: every mission can be locked, Story mounts every gun, "
                                 "levels precache their own guns under the shuffle, the camera survives level "
-                                "transitions, missions return to the menu, intros can be skipped, and a shuffled "
-                                "gun's ammo is scaled to it.")
+                                "transitions, missions return to the menu, intros can be skipped, a shuffled "
+                                "gun's ammo is scaled to it, and nothing unlocks while the client is away.")
                 else:
                     missing = [m for m, ok in zip(("story gate", "gun pak mount", "menu return", "gun precache",
-                                                   "camera guard", "intro skip", "ammo scaling"),
+                                                   "camera guard", "intro skip", "ammo scaling",
+                                                   "offline event lock"),
                                                   patched) if not ok]
                     logger.warning("Partly stock image -- missing: %s. Close Dolphin and restart this client: it patches "
                                    "a copy of the disc for you.",
